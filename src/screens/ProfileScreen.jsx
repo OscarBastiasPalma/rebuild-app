@@ -56,6 +56,9 @@ const ProfileScreen = () => {
     return (
         <ScrollView contentContainerStyle={styles.container}>
             <View style={styles.card}>
+                <TouchableOpacity style={styles.backCircle} onPress={() => navigation.goBack()}>
+                    <Text style={styles.backCircleText}>←</Text>
+                </TouchableOpacity>
                 <View style={styles.avatar} />
                 <Text style={styles.name}>{user.nombre}</Text>
                 <Text style={styles.profession}>{user.profesion}</Text>
@@ -215,6 +218,31 @@ const styles = StyleSheet.create({
     logoutButtonText: {
         color: '#fff',
         fontWeight: 'bold',
+    },
+    backCircle: {
+        position: 'absolute',
+        top: 12,
+        left: 12,
+        width: 36,
+        height: 36,
+        borderRadius: 18,
+        backgroundColor: '#fff',
+        borderWidth: 2,
+        borderColor: '#FFA500',
+        alignItems: 'center',
+        justifyContent: 'center',
+        shadowColor: '#000',
+        shadowOffset: { width: 0, height: 1 },
+        shadowOpacity: 0.1,
+        shadowRadius: 2,
+        elevation: 2,
+        zIndex: 20,
+    },
+    backCircleText: {
+        color: '#FFA500',
+        fontWeight: 'bold',
+        fontSize: 22,
+        lineHeight: 22,
     },
 });
 

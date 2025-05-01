@@ -7,6 +7,7 @@ import HomeScreen from './src/screens/HomeScreen';
 import ForgotPasswordScreen from './src/screens/ForgotPasswordScreen';
 import RegisterScreen from './src/screens/RegisterScreen';
 import ProfileScreen from './src/screens/ProfileScreen';
+import CompleteProfileScreen from './src/screens/CompleteProfileScreen';
 
 const Stack = createStackNavigator();
 
@@ -20,6 +21,7 @@ export default function App() {
           <Stack.Screen name="ForgotPassword" component={ForgotPasswordScreen} />
           <Stack.Screen name="Register" component={RegisterScreen} />
           <Stack.Screen name="Profile" component={ProfileScreen} />
+          <Stack.Screen name="CompleteProfile" component={CompleteProfileScreen} />
         </Stack.Navigator>
       </NavigationContainer>
     </AuthProvider>
