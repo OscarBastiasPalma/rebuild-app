@@ -1,0 +1,13 @@
+{
+    "email": "pro1@gmail.com",
+    "password": "123456",
+    "rut": "17.458.923-4",
+    "telefono": "934638648",
+    "region": "Metropolitana",
+    "ciudad": "Santiago",
+    "comuna": "San Miguel",
+    "direccion": "Novena Avenida #3234",
+    "nombre": "José Araya",
+    "profesion": "Ing. Constructor",
+    "firstLogin": true
+}
