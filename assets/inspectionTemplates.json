@@ -1,0 +1,40 @@
+[
+    {
+        "id": 1,
+        "titulo": "Departamento 501B - 3D+2B",
+        "proyecto": "San Nicolás",
+        "direccion": "Av. San Nicolas 1441",
+        "fechaVisita": "22/03/2025",
+        "region": "Metropolitana",
+        "ciudad": "Santiago",
+        "comuna": "San Miguel",
+        "status": "Usado",
+        "tipo": "Departamento",
+        "dormitorios": 3,
+        "banos": 2,
+        "superficie": 75,
+        "terraza": 28,
+        "inmobiliaria": "Imaginates",
+        "comentarios": "Se requiere la inspección de todos los recintos, departamento recientemente entregado por arrendatarios, es importante conocer el estado de terminación, artefactos e instalaciones en general.",
+        "imagen": "https://images.unsplash.com/photo-1506744038136-46273834b3fb?auto=format&fit=crop&w=400&q=80"
+    },
+    {
+        "id": 2,
+        "titulo": "Casa Familiar - 4D+3B",
+        "proyecto": "Sta. Amalia",
+        "direccion": "Sta. Amalia #1544",
+        "fechaVisita": "02/06/2025",
+        "region": "Metropolitana",
+        "ciudad": "La Florida",
+        "comuna": "La Florida",
+        "status": "Nuevo",
+        "tipo": "Casa",
+        "dormitorios": 4,
+        "banos": 3,
+        "superficie": 112,
+        "terraza": 40,
+        "inmobiliaria": "Imagina",
+        "comentarios": "Casa nueva, inspección de terminaciones y artefactos.",
+        "imagen": "https://images.unsplash.com/photo-1460518451285-97b6aa326961?auto=format&fit=crop&w=400&q=80"
+    }
+]

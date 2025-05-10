@@ -1,12 +1,16 @@
 import React, { useState } from 'react';
-import { View, Text, TextInput, TouchableOpacity, Alert, StyleSheet, Image, KeyboardAvoidingView, Platform } from 'react-native';
+import { View, Text, TextInput, TouchableOpacity, Alert, StyleSheet, Image, KeyboardAvoidingView, Platform, ActivityIndicator } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import { useAuth } from '../context/AuthContext';
-import mockUserData from '../../assets/mockUserData.json';
+import AsyncStorage from '@react-native-async-storage/async-storage';
+import env from '../config';
+
+const { API_URL } = env();
 
 const LoginScreen = () => {
     const [email, setEmail] = useState('');
     const [password, setPassword] = useState('');
+    const [loading, setLoading] = useState(false);
     const navigation = useNavigation();
     const { login } = useAuth();
 
@@ -16,7 +20,6 @@ const LoginScreen = () => {
     };
 
     const handleLogin = async () => {
-        console.log('Login attempt:', { email, password });
         if (!validateEmail(email)) {
             Alert.alert('Error', 'Por favor, ingresa un correo válido.');
             return;
@@ -26,43 +29,47 @@ const LoginScreen = () => {
             return;
         }
 
-        // Usar directamente el mock importado
-        const userData = mockUserData;
-        console.log('Contenido mockUserData.json:', userData);
+        setLoading(true);
+        try {
+            const response = await fetch(`${API_URL}/auth/login`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({
+                    email,
+                    password,
+                    userType: 'PROFESSIONAL'
+                })
+            });
 
-        if (email === userData.email && password === userData.password) {
-            login(email);
-            if (userData.firstLogin) {
+            const data = await response.json();
+
+            if (!response.ok) {
+                throw new Error(data.error || 'Error al iniciar sesión');
+            }
+
+            // Verificar si el usuario existe en la respuesta
+            if (!data.user) {
+                throw new Error('Error: No se recibió información del usuario');
+            }
+
+            // Actualizar el contexto de autenticación
+            login(data.user);
+
+            // Navegar según el estado del perfil
+            if (!data.user.profileCompleted) {
                 navigation.replace('CompleteProfile');
             } else {
                 navigation.replace('Home');
             }
-        } else {
-            Alert.alert('Error', 'Correo o contraseña incorrectos.');
+        } catch (error) {
+            Alert.alert('Error', error.message || 'Error al iniciar sesión');
+            console.error('Login error:', error);
+        } finally {
+            setLoading(false);
         }
     };
-
-    // FUTURA CONEXIÓN AL MICROSERVICIO
-    /*
-    fetch('https://tu-api.com/login', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email, password })
-    })
-    .then(response => response.json())
-    .then(data => {
-        if (data.success) {
-            login(email);
-            navigation.replace('Home');
-        } else {
-            Alert.alert('Error', 'Credenciales inválidas.');
-        }
-    })
-    .catch(error => {
-        Alert.alert('Error', 'No se pudo conectar al servicio.');
-        console.error(error);
-    });
-    */
 
     return (
         <KeyboardAvoidingView
@@ -77,41 +84,43 @@ const LoginScreen = () => {
                 <TextInput
                     style={styles.input}
                     value={email}
-                    onChangeText={text => {
-                        setEmail(text);
-                        console.log('Input email:', text);
-                    }}
+                    onChangeText={setEmail}
                     keyboardType="email-address"
                     autoCapitalize="none"
                     autoCorrect={false}
                     placeholder="Ingresa tu email"
                     placeholderTextColor="#999"
+                    editable={!loading}
                 />
 
                 <Text style={styles.label}>Contraseña</Text>
                 <TextInput
                     style={styles.input}
                     value={password}
-                    onChangeText={text => {
-                        setPassword(text);
-                        console.log('Input password:', text);
-                    }}
+                    onChangeText={setPassword}
                     secureTextEntry
                     placeholder="Ingresa tu contraseña"
                     placeholderTextColor="#999"
+                    editable={!loading}
                 />
 
                 <TouchableOpacity
-                    style={styles.button}
+                    style={[styles.button, loading && styles.buttonDisabled]}
                     onPress={handleLogin}
                     activeOpacity={0.7}
+                    disabled={loading}
                 >
-                    <Text style={styles.buttonText}>Iniciar Sesión</Text>
+                    {loading ? (
+                        <ActivityIndicator color="#FFF" />
+                    ) : (
+                        <Text style={styles.buttonText}>Iniciar Sesión</Text>
+                    )}
                 </TouchableOpacity>
 
                 <TouchableOpacity
                     onPress={() => navigation.navigate('ForgotPassword')}
                     activeOpacity={0.7}
+                    disabled={loading}
                 >
                     <Text style={styles.link}>¿Perdiste tu contraseña?</Text>
                 </TouchableOpacity>
@@ -119,6 +128,7 @@ const LoginScreen = () => {
                 <TouchableOpacity
                     onPress={() => navigation.navigate('Register')}
                     activeOpacity={0.7}
+                    disabled={loading}
                 >
                     <Text style={styles.link}>¿No tienes una cuenta? Regístrate</Text>
                 </TouchableOpacity>
@@ -184,6 +194,9 @@ const styles = StyleSheet.create({
         marginTop: 10,
         width: '100%',
         alignItems: 'center'
+    },
+    buttonDisabled: {
+        opacity: 0.7
     },
     buttonText: {
         color: 'white',

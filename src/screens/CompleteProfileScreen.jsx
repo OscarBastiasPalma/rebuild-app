@@ -1,11 +1,10 @@
 import React, { useState } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, TextInput, ScrollView, Alert, Image } from 'react-native';
-import AsyncStorage from '@react-native-async-storage/async-storage';
+import { View, Text, StyleSheet, TouchableOpacity, TextInput, ScrollView, Alert, Image, ActivityIndicator } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import * as ImagePicker from 'expo-image-picker';
-import mockUserData from '../../assets/mockUserData.json';
-
-const STORAGE_KEY = 'userProfileData';
+import DropDownPicker from 'react-native-dropdown-picker';
+import env from '../config';
+import { KeyboardAwareScrollView } from 'react-native-keyboard-aware-scroll-view';
 
 const SPECIALTIES = [
     'Obra Gruesa',
@@ -18,24 +17,95 @@ const SPECIALTIES = [
     'Carpintería interior',
 ];
 
-const REGIONS = ['Metropolitana', 'Valparaíso', 'Biobío'];
-const CITIES = ['Santiago', 'Valparaíso', 'Concepción'];
-const COMMUNES = ['San Miguel', 'Providencia', 'Las Condes'];
+// Eliminar arrays mock
+// const REGIONS = [...];
+// const CITIES = [...];
+// const COMMUNES = [...];
 
 const CompleteProfileScreen = () => {
     const navigation = useNavigation();
     const [form, setForm] = useState({
-        telefono: '',
-        profesion: '',
-        experiencia: '',
-        especialidades: [],
-        region: '',
-        ciudad: '',
-        comuna: '',
-        fotoPerfil: '',
-        ...mockUserData,
+        phone: '',
+        profession: '',
+        experience: '',
+        specialties: [],
+        regionId: '',
+        cityId: '',
+        communeId: '',
+        profilePicture: null,
     });
     const [loading, setLoading] = useState(false);
+
+    // Estado para DropDownPicker
+    const [regionOpen, setRegionOpen] = useState(false);
+    const [cityOpen, setCityOpen] = useState(false);
+    const [communeOpen, setCommuneOpen] = useState(false);
+    const [regionItems, setRegionItems] = useState([]);
+    const [cityItems, setCityItems] = useState([]);
+    const [communeItems, setCommuneItems] = useState([]);
+    // Guardar datos completos para dependencias
+    const [allCities, setAllCities] = useState([]);
+    const [allCommunes, setAllCommunes] = useState([]);
+
+    // Cargar regiones al montar
+    React.useEffect(() => {
+        const fetchRegions = async () => {
+            try {
+                const { API_URL } = env();
+                const res = await fetch(`${API_URL}/locations/regions`);
+                const data = await res.json();
+                setRegionItems(data.map(r => ({ label: r.name, value: r.id })));
+            } catch (e) {
+                Alert.alert('Error', 'No se pudieron cargar las regiones');
+            }
+        };
+        fetchRegions();
+    }, []);
+
+    // Cargar ciudades cuando cambia la región
+    React.useEffect(() => {
+        if (!form.regionId) {
+            setCityItems([]);
+            setCommuneItems([]);
+            setAllCities([]);
+            return;
+        }
+        const fetchCities = async () => {
+            try {
+                const { API_URL } = env();
+                const res = await fetch(`${API_URL}/locations/cities?regionId=${form.regionId}`);
+                const data = await res.json();
+                setAllCities(data);
+                setCityItems(data.map(c => ({ label: c.name, value: c.id })));
+            } catch (e) {
+                Alert.alert('Error', 'No se pudieron cargar las ciudades');
+            }
+        };
+        fetchCities();
+        setForm(f => ({ ...f, cityId: '', communeId: '' }));
+    }, [form.regionId]);
+
+    // Cargar comunas cuando cambia la ciudad
+    React.useEffect(() => {
+        if (!form.cityId) {
+            setCommuneItems([]);
+            setAllCommunes([]);
+            return;
+        }
+        const fetchCommunes = async () => {
+            try {
+                const { API_URL } = env();
+                const res = await fetch(`${API_URL}/locations/communes?cityId=${form.cityId}`);
+                const data = await res.json();
+                setAllCommunes(data);
+                setCommuneItems(data.map(c => ({ label: c.name, value: c.id })));
+            } catch (e) {
+                Alert.alert('Error', 'No se pudieron cargar las comunas');
+            }
+        };
+        fetchCommunes();
+        setForm(f => ({ ...f, communeId: '' }));
+    }, [form.cityId]);
 
     const handleChange = (key, value) => {
         setForm({ ...form, [key]: value });
@@ -43,12 +113,12 @@ const CompleteProfileScreen = () => {
 
     const handleSpecialty = (spec) => {
         setForm((prev) => {
-            const exists = prev.especialidades.includes(spec);
+            const exists = prev.specialties.includes(spec);
             return {
                 ...prev,
-                especialidades: exists
-                    ? prev.especialidades.filter((s) => s !== spec)
-                    : [...prev.especialidades, spec],
+                specialties: exists
+                    ? prev.specialties.filter((s) => s !== spec)
+                    : [...prev.specialties, spec],
             };
         });
     };
@@ -66,94 +136,221 @@ const CompleteProfileScreen = () => {
             quality: 0.5,
         });
         if (!result.canceled && result.assets && result.assets.length > 0) {
-            setForm({ ...form, fotoPerfil: result.assets[0].uri });
+            setForm({ ...form, profilePicture: result.assets[0] });
         }
     };
 
     const handleSave = async () => {
-        if (!form.telefono || !form.profesion || !form.experiencia || !form.region || !form.ciudad || !form.comuna) {
-            Alert.alert('Completa todos los campos obligatorios');
+        if (!form.phone || !form.profession || !form.experience || !form.regionId || !form.cityId || !form.communeId) {
+            Alert.alert('Error', 'Por favor completa todos los campos obligatorios');
             return;
         }
+
+        if (form.specialties.length === 0) {
+            Alert.alert('Error', 'Por favor selecciona al menos una especialidad');
+            return;
+        }
+
+        if (!form.profilePicture) {
+            Alert.alert('Error', 'Por favor selecciona una foto de perfil');
+            return;
+        }
+
         setLoading(true);
         try {
-            const updated = { ...form, firstLogin: false };
-            await AsyncStorage.setItem(STORAGE_KEY, JSON.stringify(updated));
+            const { API_URL } = env();
+            const formData = new FormData();
+
+            // Agregar la imagen
+            const imageUri = form.profilePicture.uri;
+            const imageName = imageUri.split('/').pop();
+            const match = /\.(\w+)$/.exec(imageName);
+            const imageType = match ? `image/${match[1]}` : 'image/jpeg';
+
+            formData.append('profilePicture', {
+                uri: imageUri,
+                name: imageName,
+                type: imageType
+            });
+
+            // Agregar el resto de los datos
+            formData.append('phone', form.phone);
+            formData.append('profession', form.profession);
+            formData.append('experience', form.experience);
+            formData.append('specialties', JSON.stringify(form.specialties));
+            formData.append('regionId', form.regionId);
+            formData.append('cityId', form.cityId);
+            formData.append('communeId', form.communeId);
+
+            const response = await fetch(`${API_URL}/profile/professional`, {
+                method: 'POST',
+                body: formData,
+                headers: {
+                    'Content-Type': 'multipart/form-data',
+                },
+            });
+
+            const data = await response.json();
+
+            if (!response.ok) {
+                throw new Error(data.error || 'Error al guardar el perfil');
+            }
+
+            Alert.alert(
+                'Éxito',
+                'Perfil completado exitosamente',
+                [
+                    {
+                        text: 'OK',
+                        onPress: () => navigation.replace('Home')
+                    }
+                ]
+            );
+        } catch (error) {
+            Alert.alert('Error', error.message || 'Error al guardar el perfil');
+        } finally {
             setLoading(false);
-            navigation.replace('Home');
-        } catch (err) {
-            setLoading(false);
-            Alert.alert('Error', 'No se pudo guardar el perfil.');
+        }
+    };
+
+    // Manejo de selección de comuna para actualizar ciudad y región
+    const handleCommuneChange = (communeId) => {
+        handleChange('communeId', communeId);
+        const selectedCommune = allCommunes.find(commune => commune.id === communeId);
+        if (selectedCommune) {
+            const selectedCity = allCities.find(city => city.id === selectedCommune.cityId);
+            if (selectedCity) {
+                if (form.cityId !== selectedCity.id) {
+                    handleChange('cityId', selectedCity.id);
+                }
+                // Para región, puedes usar regionId de la ciudad
+                if (selectedCity.regionId && form.regionId !== selectedCity.regionId) {
+                    handleChange('regionId', selectedCity.regionId);
+                }
+            }
         }
     };
 
     return (
-        <ScrollView contentContainerStyle={styles.container}>
+        <KeyboardAwareScrollView contentContainerStyle={styles.container}>
             <View style={styles.card}>
                 <View style={styles.headerRow}>
                     <Image source={require('../../assets/icon.png')} style={styles.icon} />
                     <Text style={styles.title}>Completa tu Perfil</Text>
                 </View>
                 <TouchableOpacity style={styles.photoButton} onPress={pickImage}>
-                    {form.fotoPerfil ? (
-                        <Image source={{ uri: form.fotoPerfil }} style={styles.profileImage} />
+                    {form.profilePicture ? (
+                        <Image source={{ uri: form.profilePicture.uri }} style={styles.profileImage} />
                     ) : (
                         <Text style={styles.photoText}>+ Foto de Perfil</Text>
                     )}
                 </TouchableOpacity>
                 <Text style={styles.label}>Teléfono</Text>
-                <TextInput style={styles.input} value={form.telefono} onChangeText={v => handleChange('telefono', v)} keyboardType="phone-pad" />
+                <TextInput
+                    style={styles.input}
+                    value={form.phone}
+                    onChangeText={v => handleChange('phone', v)}
+                    keyboardType="phone-pad"
+                    editable={!loading}
+                />
                 <Text style={styles.label}>Profesión</Text>
-                <TextInput style={styles.input} value={form.profesion} onChangeText={v => handleChange('profesion', v)} />
+                <TextInput
+                    style={styles.input}
+                    value={form.profession}
+                    onChangeText={v => handleChange('profession', v)}
+                    editable={!loading}
+                />
                 <Text style={styles.label}>Años de experiencia</Text>
-                <TextInput style={styles.input} value={form.experiencia} onChangeText={v => handleChange('experiencia', v)} keyboardType="numeric" />
+                <TextInput
+                    style={styles.input}
+                    value={form.experience}
+                    onChangeText={v => handleChange('experience', v)}
+                    keyboardType="numeric"
+                    editable={!loading}
+                />
+                {/* Región DropDownPicker */}
+                <Text style={styles.label}>Región</Text>
+                <DropDownPicker
+                    open={regionOpen}
+                    value={form.regionId}
+                    items={regionItems}
+                    setOpen={setRegionOpen}
+                    setValue={callback => {
+                        const value = callback(form.regionId);
+                        handleChange('regionId', value);
+                    }}
+                    setItems={setRegionItems}
+                    placeholder="Selecciona una Región"
+                    disabled={loading}
+                    style={styles.dropdown}
+                    dropDownContainerStyle={styles.dropdownContainer}
+                    zIndex={3000}
+                />
+                {/* Ciudad DropDownPicker */}
+                <Text style={styles.label}>Ciudad</Text>
+                <DropDownPicker
+                    open={cityOpen}
+                    value={form.cityId}
+                    items={cityItems}
+                    setOpen={setCityOpen}
+                    setValue={callback => {
+                        const value = callback(form.cityId);
+                        handleChange('cityId', value);
+                    }}
+                    setItems={setCityItems}
+                    placeholder="Selecciona una Ciudad"
+                    disabled={loading || !form.regionId}
+                    style={styles.dropdown}
+                    dropDownContainerStyle={styles.dropdownContainer}
+                    zIndex={2000}
+                />
+                {/* Comuna DropDownPicker */}
+                <Text style={styles.label}>Comuna</Text>
+                <DropDownPicker
+                    open={communeOpen}
+                    value={form.communeId}
+                    items={communeItems}
+                    setOpen={setCommuneOpen}
+                    setValue={callback => {
+                        const value = callback(form.communeId);
+                        handleCommuneChange(value);
+                    }}
+                    setItems={setCommuneItems}
+                    placeholder="Selecciona una Comuna"
+                    disabled={loading || !form.cityId}
+                    style={styles.dropdown}
+                    dropDownContainerStyle={styles.dropdownContainer}
+                    zIndex={1000}
+                />
                 <Text style={styles.label}>Especialidades</Text>
                 <View style={styles.specialtiesContainer}>
                     {SPECIALTIES.map((spec) => (
                         <TouchableOpacity
                             key={spec}
-                            style={[styles.checkbox, form.especialidades.includes(spec) && styles.checkboxSelected]}
+                            style={[
+                                styles.checkbox,
+                                form.specialties.includes(spec) && styles.checkboxSelected
+                            ]}
                             onPress={() => handleSpecialty(spec)}
+                            disabled={loading}
                         >
                             <Text style={styles.checkboxLabel}>{spec}</Text>
                         </TouchableOpacity>
                     ))}
                 </View>
-                <Text style={styles.label}>Región</Text>
-                <View style={styles.pickerContainer}>
-                    <TextInput
-                        style={styles.input}
-                        value={form.region}
-                        placeholder="Selecciona una Región"
-                        onFocus={() => { }}
-                        onChangeText={v => handleChange('region', v)}
-                    />
-                </View>
-                <Text style={styles.label}>Ciudad</Text>
-                <View style={styles.pickerContainer}>
-                    <TextInput
-                        style={styles.input}
-                        value={form.ciudad}
-                        placeholder="Selecciona una Ciudad"
-                        onFocus={() => { }}
-                        onChangeText={v => handleChange('ciudad', v)}
-                    />
-                </View>
-                <Text style={styles.label}>Comuna</Text>
-                <View style={styles.pickerContainer}>
-                    <TextInput
-                        style={styles.input}
-                        value={form.comuna}
-                        placeholder="Selecciona una Comuna"
-                        onFocus={() => { }}
-                        onChangeText={v => handleChange('comuna', v)}
-                    />
-                </View>
-                <TouchableOpacity style={styles.saveButton} onPress={handleSave} disabled={loading}>
-                    <Text style={styles.saveButtonText}>{loading ? 'Guardando...' : 'Guardar Perfil'}</Text>
+                <TouchableOpacity
+                    style={[styles.saveButton, loading && styles.buttonDisabled]}
+                    onPress={handleSave}
+                    disabled={loading}
+                >
+                    {loading ? (
+                        <ActivityIndicator color="#FFF" />
+                    ) : (
+                        <Text style={styles.saveButtonText}>Guardar Perfil</Text>
+                    )}
                 </TouchableOpacity>
             </View>
-        </ScrollView>
+        </KeyboardAwareScrollView>
     );
 };
 
@@ -230,6 +427,13 @@ const styles = StyleSheet.create({
         fontSize: 14,
         backgroundColor: '#fff',
     },
+    dropdown: {
+        borderColor: '#FFA500',
+        marginBottom: 10,
+    },
+    dropdownContainer: {
+        borderColor: '#FFA500',
+    },
     specialtiesContainer: {
         flexDirection: 'row',
         flexWrap: 'wrap',
@@ -255,10 +459,6 @@ const styles = StyleSheet.create({
         fontWeight: 'bold',
         marginLeft: 4,
     },
-    pickerContainer: {
-        width: '100%',
-        marginBottom: 8,
-    },
     saveButton: {
         backgroundColor: '#FFA500',
         borderRadius: 5,
@@ -267,6 +467,9 @@ const styles = StyleSheet.create({
         marginTop: 20,
         alignItems: 'center',
         width: '80%',
+    },
+    buttonDisabled: {
+        opacity: 0.7,
     },
     saveButtonText: {
         color: '#fff',

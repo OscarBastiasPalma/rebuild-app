@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, Image, ScrollView, TextInput, FlatList, Modal } from 'react-native';
+import { View, Text, StyleSheet, TouchableOpacity, Image, ScrollView, TextInput, FlatList, Modal, ActivityIndicator } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import env from '../config';
 
 const pendingInspections = [
     {
@@ -40,21 +41,44 @@ const availableInspections = [
 
 const comunas = ['Todas', 'San Miguel', 'La Florida'];
 
-const HomeScreen = ({ navigation }) => {
+const HomeScreen = ({ navigation, route }) => {
     const [user, setUser] = useState(null);
     const [searchComuna, setSearchComuna] = useState('Todas');
     const [filteredInspections, setFilteredInspections] = useState(availableInspections);
     const [modalVisible, setModalVisible] = useState(false);
+    const [loadingUser, setLoadingUser] = useState(true);
+
+    // Helper para obtener el nombre completo
+    const getFullName = (user) => {
+        if (!user) return '';
+        if (user.fullName) return user.fullName;
+        if (user.nombre && user.apellido) return `${user.nombre} ${user.apellido}`;
+        if (user.name) return user.name;
+        if (user.user && user.user.name) return user.user.name;
+        return user.nombre || '';
+    };
 
     useEffect(() => {
-        const loadUser = async () => {
-            const stored = await AsyncStorage.getItem('userProfileData');
-            if (stored) {
-                setUser(JSON.parse(stored));
+        const fetchUser = async () => {
+            try {
+                const { API_URL } = env();
+                let url = `${API_URL}/profile/professional`;
+                if (route && route.params && route.params.id) {
+                    url += `?id=${route.params.id}`;
+                }
+                const res = await fetch(url, { credentials: 'include' });
+                if (!res.ok) throw new Error('No se pudo obtener el perfil');
+                const data = await res.json();
+                console.log('Respuesta del endpoint:', data);
+                setUser(data);
+            } catch (e) {
+                setUser(null);
+            } finally {
+                setLoadingUser(false);
             }
         };
-        loadUser();
-    }, []);
+        fetchUser();
+    }, [route]);
 
     useEffect(() => {
         if (searchComuna === 'Todas') {
@@ -80,12 +104,23 @@ const HomeScreen = ({ navigation }) => {
         return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase();
     };
 
+    if (loadingUser) {
+        return (
+            <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: '#FFA500' }}>
+                <ActivityIndicator size="large" color="#fff" />
+            </View>
+        );
+    }
+
+    const fullName = getFullName(user);
+    console.log('URL de la imagen de perfil:', user?.profilePicture);
+
     return (
         <ScrollView contentContainerStyle={styles.container}>
             <View style={styles.card}>
                 {/* Botón de perfil (iniciales) en la esquina superior izquierda */}
                 <TouchableOpacity style={styles.profileCircleLeft} onPress={() => navigation.navigate('Profile')}>
-                    <Text style={styles.profileCircleText}>{getInitials(user?.nombre)}</Text>
+                    <Text style={styles.profileCircleText}>{getInitials(fullName)}</Text>
                 </TouchableOpacity>
                 {/* Botón de cerrar sesión en la esquina superior derecha */}
                 <TouchableOpacity style={styles.logoutCircleRight} onPress={() => setModalVisible(true)}>
@@ -93,12 +128,12 @@ const HomeScreen = ({ navigation }) => {
                 </TouchableOpacity>
                 {/* Header usuario */}
                 <View style={styles.header}>
-                    {user?.fotoPerfil ? (
-                        <Image source={{ uri: user.fotoPerfil }} style={styles.avatar} />
+                    {user?.profilePicture ? (
+                        <Image source={{ uri: user.profilePicture }} style={styles.avatar} />
                     ) : (
-                        <View style={styles.avatarPlaceholder} />
+                        <Image source={{ uri: 'https://img.freepik.com/free-vector/blue-circle-with-white-user_78370-4707.jpg?t=st=1746854255~exp=1746857855~hmac=e5883b0482cfda0e123ef9760502ffe974bcf4f0657d844db49129093b88fbd7&w=1380' }} style={styles.avatar} />
                     )}
-                    <Text style={styles.name}>{user?.nombre || 'Usuario'}</Text>
+                    <Text style={styles.name}>{fullName || 'Usuario'}</Text>
                     <Text style={styles.profession}>{user?.profesion || ''}</Text>
                 </View>
                 {/* Inspecciones pendientes */}
@@ -137,15 +172,17 @@ const HomeScreen = ({ navigation }) => {
                     data={filteredInspections}
                     keyExtractor={item => item.id.toString()}
                     renderItem={({ item }) => (
-                        <View style={styles.availableCard}>
-                            <Image source={{ uri: item.image }} style={styles.availableImage} />
-                            <View style={styles.availableInfo}>
-                                <Text style={styles.availableType}>{item.type} <Text style={styles.availableComuna}>{item.comuna}</Text></Text>
-                                <Text style={styles.availableSize}>{item.size}</Text>
-                                <Text style={styles.availableAddress}>{item.address}</Text>
-                                <Text style={styles.availableDate}>{item.date}   {item.time}</Text>
+                        <TouchableOpacity onPress={() => navigation.navigate('TakeInspection', { inspectionId: item.id })}>
+                            <View style={styles.availableCard}>
+                                <Image source={{ uri: item.image }} style={styles.availableImage} />
+                                <View style={styles.availableInfo}>
+                                    <Text style={styles.availableType}>{item.type} <Text style={styles.availableComuna}>{item.comuna}</Text></Text>
+                                    <Text style={styles.availableSize}>{item.size}</Text>
+                                    <Text style={styles.availableAddress}>{item.address}</Text>
+                                    <Text style={styles.availableDate}>{item.date}   {item.time}</Text>
+                                </View>
                             </View>
-                        </View>
+                        </TouchableOpacity>
                     )}
                     style={{ width: '100%' }}
                     contentContainerStyle={{ alignItems: 'center' }}

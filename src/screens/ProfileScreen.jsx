@@ -1,35 +1,103 @@
 import React, { useEffect, useState } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, Alert, ScrollView, TextInput } from 'react-native';
+import { View, Text, StyleSheet, TouchableOpacity, Alert, ScrollView, TextInput, Image, ActivityIndicator } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import mockUserData from '../../assets/mockUserData.json';
+import DropDownPicker from 'react-native-dropdown-picker';
+import { KeyboardAwareScrollView } from 'react-native-keyboard-aware-scroll-view';
+import env from '../config';
 
 const STORAGE_KEY = 'userProfileData';
 
 const ProfileScreen = () => {
-    const [user, setUser] = useState(null);
+    const [profile, setProfile] = useState(null);
     const [editing, setEditing] = useState(false);
     const [form, setForm] = useState({});
+    const [loading, setLoading] = useState(false);
     const navigation = useNavigation();
 
-    // Cargar datos del usuario desde AsyncStorage o mock
+    // Estado para DropDownPicker
+    const [regionOpen, setRegionOpen] = useState(false);
+    const [cityOpen, setCityOpen] = useState(false);
+    const [communeOpen, setCommuneOpen] = useState(false);
+    const [regionItems, setRegionItems] = useState([]);
+    const [cityItems, setCityItems] = useState([]);
+    const [communeItems, setCommuneItems] = useState([]);
+    // Guardar datos completos para dependencias
+    const [allCities, setAllCities] = useState([]);
+    const [allCommunes, setAllCommunes] = useState([]);
+
+    // Cargar regiones al montar
     useEffect(() => {
-        const loadUser = async () => {
+        const fetchRegions = async () => {
             try {
-                const stored = await AsyncStorage.getItem(STORAGE_KEY);
-                if (stored) {
-                    const parsed = JSON.parse(stored);
-                    setUser(parsed);
-                    setForm(parsed);
-                } else {
-                    setUser(mockUserData);
-                    setForm(mockUserData);
-                }
+                const { API_URL } = env();
+                const res = await fetch(`${API_URL}/locations/regions`);
+                const data = await res.json();
+                setRegionItems(data.map(r => ({ label: r.name, value: r.id })));
+            } catch (e) {
+                Alert.alert('Error', 'No se pudieron cargar las regiones');
+            }
+        };
+        fetchRegions();
+    }, []);
+
+    // Cargar ciudades cuando cambia la región
+    useEffect(() => {
+        if (!form.regionId) {
+            setCityItems([]);
+            setCommuneItems([]);
+            setAllCities([]);
+            return;
+        }
+        const fetchCities = async () => {
+            try {
+                const { API_URL } = env();
+                const res = await fetch(`${API_URL}/locations/cities?regionId=${form.regionId}`);
+                const data = await res.json();
+                setAllCities(data);
+                setCityItems(data.map(c => ({ label: c.name, value: c.id })));
+            } catch (e) {
+                Alert.alert('Error', 'No se pudieron cargar las ciudades');
+            }
+        };
+        fetchCities();
+    }, [form.regionId]);
+
+    // Cargar comunas cuando cambia la ciudad
+    useEffect(() => {
+        if (!form.cityId) {
+            setCommuneItems([]);
+            setAllCommunes([]);
+            return;
+        }
+        const fetchCommunes = async () => {
+            try {
+                const { API_URL } = env();
+                const res = await fetch(`${API_URL}/locations/communes?cityId=${form.cityId}`);
+                const data = await res.json();
+                setAllCommunes(data);
+                setCommuneItems(data.map(c => ({ label: c.name, value: c.id })));
+            } catch (e) {
+                Alert.alert('Error', 'No se pudieron cargar las comunas');
+            }
+        };
+        fetchCommunes();
+    }, [form.cityId]);
+
+    // Cargar datos del usuario desde el backend
+    useEffect(() => {
+        const fetchProfile = async () => {
+            try {
+                const { API_URL } = env();
+                const res = await fetch(`${API_URL}/profile/professional`, { credentials: 'include' });
+                const data = await res.json();
+                setProfile(data);
+                setForm(data);
             } catch (err) {
                 Alert.alert('Error', 'No se pudo cargar el perfil.');
             }
         };
-        loadUser();
+        fetchProfile();
     }, []);
 
     const handleEdit = () => {
@@ -41,27 +109,90 @@ const ProfileScreen = () => {
     };
 
     const handleSave = async () => {
+        setLoading(true);
         try {
-            await AsyncStorage.setItem(STORAGE_KEY, JSON.stringify(form));
-            setUser(form);
+            const { API_URL } = env();
+
+            const dataToSend = {
+                phone: form.phone,
+                profession: form.profession,
+                regionId: form.regionId,
+                cityId: form.cityId,
+                communeId: form.communeId
+            };
+
+            if (form.user?.email) {
+                dataToSend.user = { email: form.user.email };
+            }
+
+            console.log('Enviando datos:', dataToSend);
+
+            const res = await fetch(`${API_URL}/profile/professional`, {
+                method: 'PATCH',
+                body: JSON.stringify(dataToSend),
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                credentials: 'include',
+            });
+
+            const responseData = await res.json();
+            console.log('Respuesta del servidor:', responseData);
+
+            if (!res.ok) {
+                throw new Error(responseData.error || 'Error al actualizar el perfil');
+            }
+
+            setProfile({ ...profile, ...responseData });
             setEditing(false);
-            Alert.alert('Éxito', 'Perfil actualizado.');
+            Alert.alert('Éxito', 'Perfil actualizado correctamente.');
         } catch (err) {
-            Alert.alert('Error', 'No se pudo guardar el perfil.');
+            console.error('Error al guardar perfil:', err);
+            Alert.alert(
+                'Error',
+                err.message || 'No se pudo guardar el perfil. Por favor, intenta nuevamente.'
+            );
+        } finally {
+            setLoading(false);
         }
     };
 
-    if (!user) return <Text style={{ marginTop: 50, textAlign: 'center' }}>Cargando perfil...</Text>;
+    if (!profile) return <Text style={{ marginTop: 50, textAlign: 'center' }}>Cargando perfil...</Text>;
 
     return (
-        <ScrollView contentContainerStyle={styles.container}>
+        <KeyboardAwareScrollView contentContainerStyle={styles.container}>
             <View style={styles.card}>
                 <TouchableOpacity style={styles.backCircle} onPress={() => navigation.goBack()}>
                     <Text style={styles.backCircleText}>←</Text>
                 </TouchableOpacity>
-                <View style={styles.avatar} />
-                <Text style={styles.name}>{user.nombre}</Text>
-                <Text style={styles.profession}>{user.profesion}</Text>
+
+                {editing ? (
+                    <View style={styles.avatarContainer}>
+                        {(form.profilePicture?.uri || profile?.profilePicture) ? (
+                            <Image
+                                source={{ uri: form.profilePicture?.uri || profile?.profilePicture }}
+                                style={styles.avatar}
+                            />
+                        ) : (
+                            <View style={styles.avatar}>
+                                <Text style={styles.avatarPlaceholder}>+</Text>
+                            </View>
+                        )}
+                    </View>
+                ) : (
+                    profile?.profilePicture ? (
+                        <Image
+                            source={{ uri: profile.profilePicture }}
+                            style={styles.avatar}
+                        />
+                    ) : (
+                        <View style={styles.avatar}>
+                            <Text style={styles.avatarPlaceholder}>👤</Text>
+                        </View>
+                    )
+                )}
+                <Text style={styles.name}>{profile.user?.name || 'Usuario'}</Text>
+                <Text style={styles.profession}>{profile.profession || ''}</Text>
                 <View style={styles.profileBox}>
                     <View style={styles.profileHeader}>
                         <Text style={styles.profileTitle}>Perfil de usuario</Text>
@@ -74,32 +205,86 @@ const ProfileScreen = () => {
                     {editing ? (
                         <>
                             <Text style={styles.label}>Correo:</Text>
-                            <TextInput style={styles.input} value={form.email} onChangeText={v => handleChange('email', v)} />
-                            <Text style={styles.label}>RUT:</Text>
-                            <TextInput style={styles.input} value={form.rut} onChangeText={v => handleChange('rut', v)} />
+                            <TextInput style={styles.input} value={form.user?.email} onChangeText={v => handleChange('user', { ...form.user, email: v })} />
                             <Text style={styles.label}>Teléfono:</Text>
-                            <TextInput style={styles.input} value={form.telefono} onChangeText={v => handleChange('telefono', v)} />
-                            <Text style={styles.label}>Región:</Text>
-                            <TextInput style={styles.input} value={form.region} onChangeText={v => handleChange('region', v)} />
-                            <Text style={styles.label}>Ciudad:</Text>
-                            <TextInput style={styles.input} value={form.ciudad} onChangeText={v => handleChange('ciudad', v)} />
-                            <Text style={styles.label}>Comuna:</Text>
-                            <TextInput style={styles.input} value={form.comuna} onChangeText={v => handleChange('comuna', v)} />
-                            <Text style={styles.label}>Dirección:</Text>
-                            <TextInput style={styles.input} value={form.direccion} onChangeText={v => handleChange('direccion', v)} />
-                            <TouchableOpacity style={styles.saveButton} onPress={handleSave}>
-                                <Text style={styles.saveButtonText}>Guardar</Text>
+                            <TextInput style={styles.input} value={form.phone} onChangeText={v => handleChange('phone', v)} />
+
+                            <Text style={styles.label}>Región</Text>
+                            <DropDownPicker
+                                open={regionOpen}
+                                value={form.regionId}
+                                items={regionItems}
+                                setOpen={setRegionOpen}
+                                setValue={callback => {
+                                    const value = callback(form.regionId);
+                                    handleChange('regionId', value);
+                                }}
+                                setItems={setRegionItems}
+                                placeholder="Selecciona una Región"
+                                style={styles.dropdown}
+                                dropDownContainerStyle={styles.dropdownContainer}
+                                zIndex={3000}
+                            />
+
+                            <Text style={styles.label}>Ciudad</Text>
+                            <DropDownPicker
+                                open={cityOpen}
+                                value={form.cityId}
+                                items={cityItems}
+                                setOpen={setCityOpen}
+                                setValue={callback => {
+                                    const value = callback(form.cityId);
+                                    handleChange('cityId', value);
+                                }}
+                                setItems={setCityItems}
+                                placeholder="Selecciona una Ciudad"
+                                disabled={!form.regionId}
+                                style={styles.dropdown}
+                                dropDownContainerStyle={styles.dropdownContainer}
+                                zIndex={2000}
+                            />
+
+                            <Text style={styles.label}>Comuna</Text>
+                            <DropDownPicker
+                                open={communeOpen}
+                                value={form.communeId}
+                                items={communeItems}
+                                setOpen={setCommuneOpen}
+                                setValue={callback => {
+                                    const value = callback(form.communeId);
+                                    handleChange('communeId', value);
+                                }}
+                                setItems={setCommuneItems}
+                                placeholder="Selecciona una Comuna"
+                                disabled={!form.cityId}
+                                style={styles.dropdown}
+                                dropDownContainerStyle={styles.dropdownContainer}
+                                zIndex={1000}
+                            />
+
+                            <Text style={styles.label}>Profesión:</Text>
+                            <TextInput style={styles.input} value={form.profession} onChangeText={v => handleChange('profession', v)} />
+
+                            <TouchableOpacity
+                                style={[styles.saveButton, loading && styles.buttonDisabled]}
+                                onPress={handleSave}
+                                disabled={loading}
+                            >
+                                {loading ? (
+                                    <ActivityIndicator color="#FFF" />
+                                ) : (
+                                    <Text style={styles.saveButtonText}>Guardar</Text>
+                                )}
                             </TouchableOpacity>
                         </>
                     ) : (
                         <>
-                            <Text style={styles.item}><Text style={styles.label}>Correo:</Text> {user.email}</Text>
-                            <Text style={styles.item}><Text style={styles.label}>RUT:</Text> {user.rut}</Text>
-                            <Text style={styles.item}><Text style={styles.label}>Teléfono:</Text> {user.telefono}</Text>
-                            <Text style={styles.item}><Text style={styles.label}>Región:</Text> {user.region}</Text>
-                            <Text style={styles.item}><Text style={styles.label}>Ciudad:</Text> {user.ciudad}</Text>
-                            <Text style={styles.item}><Text style={styles.label}>Comuna:</Text> {user.comuna}</Text>
-                            <Text style={styles.item}><Text style={styles.label}>Dirección:</Text> {user.direccion}</Text>
+                            <Text style={styles.item}><Text style={styles.label}>Correo:</Text> {profile.user?.email}</Text>
+                            <Text style={styles.item}><Text style={styles.label}>Teléfono:</Text> {profile.phone}</Text>
+                            <Text style={styles.item}><Text style={styles.label}>Región:</Text> {regionItems.find(r => r.value === profile.regionId)?.label || profile.regionId}</Text>
+                            <Text style={styles.item}><Text style={styles.label}>Ciudad:</Text> {cityItems.find(c => c.value === profile.cityId)?.label || profile.cityId}</Text>
+                            <Text style={styles.item}><Text style={styles.label}>Comuna:</Text> {communeItems.find(c => c.value === profile.communeId)?.label || profile.communeId}</Text>
+                            <Text style={styles.item}><Text style={styles.label}>Profesión:</Text> {profile.profession}</Text>
                         </>
                     )}
                 </View>
@@ -107,7 +292,7 @@ const ProfileScreen = () => {
                     <Text style={styles.logoutButtonText}>Cerrar Sesión</Text>
                 </TouchableOpacity>
             </View>
-        </ScrollView>
+        </KeyboardAwareScrollView>
     );
 };
 
@@ -132,12 +317,41 @@ const styles = StyleSheet.create({
         shadowRadius: 4,
         elevation: 5,
     },
-    avatar: {
-        width: 80,
-        height: 80,
-        borderRadius: 40,
-        backgroundColor: '#ccc',
+    avatarContainer: {
+        position: 'relative',
         marginBottom: 10,
+    },
+    avatar: {
+        width: 100,
+        height: 100,
+        borderRadius: 50,
+        backgroundColor: '#f0f0f0',
+        justifyContent: 'center',
+        alignItems: 'center',
+        borderWidth: 1,
+        borderColor: '#FFA500',
+    },
+    avatarPlaceholder: {
+        fontSize: 40,
+        color: '#666',
+    },
+    avatarEditOverlay: {
+        position: 'absolute',
+        bottom: 0,
+        left: 0,
+        right: 0,
+        backgroundColor: 'rgba(0,0,0,0.5)',
+        padding: 5,
+        borderBottomLeftRadius: 50,
+        borderBottomRightRadius: 50,
+    },
+    avatarEditText: {
+        color: '#fff',
+        textAlign: 'center',
+        fontSize: 12,
+    },
+    buttonDisabled: {
+        opacity: 0.7,
     },
     name: {
         fontSize: 20,
@@ -184,6 +398,8 @@ const styles = StyleSheet.create({
     },
     label: {
         fontWeight: 'bold',
+        marginTop: 10,
+        marginBottom: 2,
     },
     input: {
         width: '100%',
@@ -194,6 +410,13 @@ const styles = StyleSheet.create({
         marginBottom: 8,
         fontSize: 14,
         backgroundColor: '#fff',
+    },
+    dropdown: {
+        borderColor: '#FFA500',
+        marginBottom: 10,
+    },
+    dropdownContainer: {
+        borderColor: '#FFA500',
     },
     saveButton: {
         backgroundColor: '#28a745',
