@@ -1,52 +1,20 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useCallback } from 'react';
 import { View, Text, StyleSheet, TouchableOpacity, Image, ScrollView, TextInput, FlatList, Modal, ActivityIndicator } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import env from '../config';
-
-const pendingInspections = [
-    {
-        date: '29/04/2025',
-        time: '10:30 hrs.',
-        address: 'San Nicolás #1443, San Miguel',
-    },
-    {
-        date: '01/05/2025',
-        time: '13:00 hrs.',
-        address: 'Zenteno #1584, Santiago',
-    },
-];
-
-const availableInspections = [
-    {
-        id: 1,
-        image: 'https://images.unsplash.com/photo-1506744038136-46273834b3fb?auto=format&fit=crop&w=400&q=80',
-        type: '2D + 1B',
-        comuna: 'San Miguel',
-        size: '45m2',
-        address: 'San Nicolas #1144',
-        date: '29/05/2025',
-        time: '9:30 hrs',
-    },
-    {
-        id: 2,
-        image: 'https://images.unsplash.com/photo-1460518451285-97b6aa326961?auto=format&fit=crop&w=400&q=80',
-        type: '4D + 3B',
-        comuna: 'La Florida',
-        size: '112m2',
-        address: 'Sta. Amalia #1544',
-        date: '02/06/2025',
-        time: '14:30 hrs',
-    },
-];
+import { useFocusEffect } from '@react-navigation/native';
 
 const comunas = ['Todas', 'San Miguel', 'La Florida'];
 
 const HomeScreen = ({ navigation, route }) => {
     const [user, setUser] = useState(null);
     const [searchComuna, setSearchComuna] = useState('Todas');
-    const [filteredInspections, setFilteredInspections] = useState(availableInspections);
+    const [pendingInspections, setPendingInspections] = useState([]);
+    const [availableInspections, setAvailableInspections] = useState([]);
+    const [filteredInspections, setFilteredInspections] = useState([]);
     const [modalVisible, setModalVisible] = useState(false);
     const [loadingUser, setLoadingUser] = useState(true);
+    const [loadingInspections, setLoadingInspections] = useState(true);
 
     // Helper para obtener el nombre completo
     const getFullName = (user) => {
@@ -80,15 +48,48 @@ const HomeScreen = ({ navigation, route }) => {
         fetchUser();
     }, [route]);
 
+    useFocusEffect(
+        useCallback(() => {
+            let isActive = true;
+            const fetchInspections = async () => {
+                try {
+                    const { API_URL } = env();
+                    // Fetch pendientes
+                    const resPend = await fetch(`${API_URL}/inspections?status=PENDIENTE`, { credentials: 'include' });
+                    const dataPend = resPend.ok ? await resPend.json() : { inspections: [] };
+                    if (isActive) setPendingInspections(dataPend.inspections || []);
+                    // Fetch disponibles
+                    const resDisp = await fetch(`${API_URL}/inspections?status=SOLICITADO`, { credentials: 'include' });
+                    const dataDisp = resDisp.ok ? await resDisp.json() : { inspections: [] };
+                    if (isActive) {
+                        setAvailableInspections(dataDisp.inspections || []);
+                        setFilteredInspections(dataDisp.inspections || []);
+                    }
+                } catch (e) {
+                    if (isActive) {
+                        setPendingInspections([]);
+                        setAvailableInspections([]);
+                        setFilteredInspections([]);
+                    }
+                } finally {
+                    if (isActive) setLoadingInspections(false);
+                }
+            };
+            setLoadingInspections(true);
+            fetchInspections();
+            return () => { isActive = false; };
+        }, [])
+    );
+
     useEffect(() => {
         if (searchComuna === 'Todas') {
             setFilteredInspections([...availableInspections]);
         } else {
             setFilteredInspections(
-                availableInspections.filter((insp) => insp.comuna === searchComuna)
+                availableInspections.filter((insp) => insp.commune.name === searchComuna)
             );
         }
-    }, [searchComuna]);
+    }, [searchComuna, availableInspections]);
 
     const handleLogout = async () => {
         await AsyncStorage.removeItem('userProfileData');
@@ -136,22 +137,34 @@ const HomeScreen = ({ navigation, route }) => {
                     <Text style={styles.name}>{fullName || 'Usuario'}</Text>
                     <Text style={styles.profession}>{user?.profesion || ''}</Text>
                 </View>
-                {/* Inspecciones pendientes */}
+
+                {/* Inspecciones Pendientes */}
                 <View style={styles.pendingBox}>
                     <Text style={styles.pendingTitle}>Inspecciones Pendientes</Text>
-                    {pendingInspections.map((insp, idx) => (
-                        <View key={idx} style={styles.pendingItem}>
-                            <Text style={styles.pendingDate}>{insp.date}</Text>
-                            <Text style={styles.pendingTime}>{insp.time} - {insp.address}</Text>
-                        </View>
-                    ))}
+                    {pendingInspections.length === 0 ? (
+                        <Text style={styles.noInspectionsText}>No hay inspecciones pendientes</Text>
+                    ) : (
+                        pendingInspections.map((insp, idx) => (
+                            <View
+                                key={idx}
+                                style={styles.pendingItem}
+                            >
+                                <Text style={styles.pendingDate}>{new Date(insp.visitDate).toLocaleDateString()}</Text>
+                                <Text style={styles.pendingTime}>
+                                    {new Date(insp.visitDate).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })} hrs. - {insp.property?.address}
+                                </Text>
+                            </View>
+                        ))
+                    )}
                 </View>
-                {/* Buscar inspecciones disponibles */}
+
+                {/* Botón buscar inspecciones disponibles */}
                 <View style={{ alignItems: 'center', marginVertical: 10 }}>
                     <TouchableOpacity style={styles.searchButton}>
                         <Text style={styles.searchButtonText}>Buscar inspecciones disponibles</Text>
                     </TouchableOpacity>
                 </View>
+
                 {/* Filtro por comuna */}
                 <View style={styles.filterRow}>
                     <Text style={styles.filterLabel}>Filtrar por comuna:</Text>
@@ -167,27 +180,46 @@ const HomeScreen = ({ navigation, route }) => {
                         ))}
                     </ScrollView>
                 </View>
+
                 {/* Inspecciones disponibles */}
-                <FlatList
-                    data={filteredInspections}
-                    keyExtractor={item => item.id.toString()}
-                    renderItem={({ item }) => (
-                        <TouchableOpacity onPress={() => navigation.navigate('TakeInspection', { inspectionId: item.id })}>
-                            <View style={styles.availableCard}>
-                                <Image source={{ uri: item.image }} style={styles.availableImage} />
-                                <View style={styles.availableInfo}>
-                                    <Text style={styles.availableType}>{item.type} <Text style={styles.availableComuna}>{item.comuna}</Text></Text>
-                                    <Text style={styles.availableSize}>{item.size}</Text>
-                                    <Text style={styles.availableAddress}>{item.address}</Text>
-                                    <Text style={styles.availableDate}>{item.date}   {item.time}</Text>
+                {loadingInspections ? (
+                    <ActivityIndicator size="large" color="#FFA500" style={{ marginTop: 20 }} />
+                ) : filteredInspections.length === 0 ? (
+                    <Text style={styles.noInspectionsText}>No hay inspecciones disponibles</Text>
+                ) : (
+                    <FlatList
+                        data={filteredInspections}
+                        keyExtractor={item => item.id}
+                        renderItem={({ item }) => (
+                            <TouchableOpacity
+                                onPress={() => navigation.navigate('TakeInspection', { inspectionId: item.id })}
+                            >
+                                <View style={styles.availableCard}>
+                                    <Image
+                                        source={{
+                                            uri: item.property?.photos?.[0]?.url || 'https://images.unsplash.com/photo-1506744038136-46273834b3fb?auto=format&fit=crop&w=400&q=80'
+                                        }}
+                                        style={styles.availableImage}
+                                    />
+                                    <View style={styles.availableInfo}>
+                                        <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
+                                            <Text style={styles.availableType}>{item.property?.bedrooms}D + {item.property?.bathrooms}B</Text>
+                                            <Text style={styles.availableComuna}>{item.commune?.name}</Text>
+                                        </View>
+                                        <Text style={styles.availableSize}>{item.property?.innerArea || '-'}m2</Text>
+                                        <Text style={styles.availableAddress}>{item.property?.address}</Text>
+                                        <Text style={styles.availableDate}>
+                                            {new Date(item.visitDate).toLocaleDateString()}   {new Date(item.visitDate).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })} hrs
+                                        </Text>
+                                    </View>
                                 </View>
-                            </View>
-                        </TouchableOpacity>
-                    )}
-                    style={{ width: '100%' }}
-                    contentContainerStyle={{ alignItems: 'center' }}
-                    scrollEnabled={false}
-                />
+                            </TouchableOpacity>
+                        )}
+                        style={{ width: '100%' }}
+                        contentContainerStyle={{ alignItems: 'center' }}
+                        scrollEnabled={false}
+                    />
+                )}
             </View>
             {/* Modal de confirmación de cierre de sesión */}
             <Modal
@@ -298,6 +330,7 @@ const styles = StyleSheet.create({
         paddingVertical: 8,
         paddingHorizontal: 20,
         marginBottom: 10,
+        backgroundColor: '#fff',
     },
     searchButtonText: {
         color: '#FFA500',
@@ -363,6 +396,7 @@ const styles = StyleSheet.create({
     availableComuna: {
         color: '#333',
         fontWeight: 'normal',
+        marginLeft: 10,
     },
     availableSize: {
         fontSize: 13,
@@ -478,6 +512,18 @@ const styles = StyleSheet.create({
         fontWeight: 'bold',
         fontSize: 10
         ,
+    },
+    noInspectionsText: {
+        color: '#666',
+        fontSize: 16,
+        textAlign: 'center',
+        marginTop: 20,
+    },
+    availableInstructions: {
+        fontSize: 12,
+        color: '#666',
+        fontStyle: 'italic',
+        marginTop: 4,
     },
 });
 

@@ -56,7 +56,7 @@ const RegisterScreen = () => {
                     name: fullName,
                     email,
                     password,
-                    userType: 'PROFESSIONAL'
+                    userType: 'PROFESIONAL'
                 })
             });
 
