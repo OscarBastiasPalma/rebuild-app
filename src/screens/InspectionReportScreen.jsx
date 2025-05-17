@@ -2,7 +2,6 @@ import React, { useState } from 'react';
 import { View, Text, StyleSheet, Image, ScrollView, TouchableOpacity, TextInput, Modal, Alert, Switch } from 'react-native';
 import * as ImagePicker from 'expo-image-picker';
 import { useRoute, useNavigation } from '@react-navigation/native';
-import inspectionTemplates from '../../assets/inspectionTemplates.json';
 
 const partidas = [
     'Muros',
@@ -17,8 +16,7 @@ const partidas = [
 const InspectionReportScreen = () => {
     const route = useRoute();
     const navigation = useNavigation();
-    const { inspectionId } = route.params;
-    const inspection = inspectionTemplates.find(i => i.id === inspectionId);
+    const { inspectionId, inspection, property, commune, city, region } = route.params;
 
     const [items, setItems] = useState([]);
     const [current, setCurrent] = useState({
@@ -116,17 +114,38 @@ const InspectionReportScreen = () => {
                     <View style={styles.avatar} />
                     <View style={{ marginLeft: 10 }}>
                         <Text style={styles.headerTitle}>Informe de Inspección</Text>
-                        <Text style={styles.headerSubtitle}>{inspection.titulo}</Text>
+                        <Text style={styles.headerSubtitle}>{property?.address || 'Sin dirección'}</Text>
                     </View>
                 </View>
                 <View style={styles.infoBox}>
                     <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-                        <Image source={{ uri: inspection.imagen }} style={styles.image} />
+                        <Image
+                            source={{
+                                uri: property?.photos?.[0]?.url ||
+                                    'https://images.unsplash.com/photo-1506744038136-46273834b3fb?auto=format&fit=crop&w=400&q=80'
+                            }}
+                            style={styles.image}
+                        />
                         <View style={{ marginLeft: 10 }}>
-                            <Text style={styles.label}><Text style={styles.bold}>Proyecto:</Text> {inspection.proyecto}</Text>
-                            <Text style={styles.label}><Text style={styles.bold}>Dirección</Text>  {inspection.direccion}</Text>
-                            <Text style={styles.label}><Text style={styles.bold}>Fecha de visita</Text></Text>
-                            <Text style={styles.bold}>{inspection.fechaVisita}</Text>
+                            <Text style={styles.label}>
+                                <Text style={styles.bold}>Dirección:</Text> {property?.address}
+                            </Text>
+                            <Text style={styles.label}>
+                                <Text style={styles.bold}>Comuna:</Text> {commune?.name}
+                            </Text>
+                            <Text style={styles.label}>
+                                <Text style={styles.bold}>Ciudad:</Text> {city?.name}
+                            </Text>
+                            <Text style={styles.label}>
+                                <Text style={styles.bold}>Región:</Text> {region?.name}
+                            </Text>
+                            <Text style={styles.label}>
+                                <Text style={styles.bold}>Fecha programada:</Text>
+                            </Text>
+                            <Text style={styles.bold}>
+                                {new Date(inspection.visitDate).toLocaleDateString()} -
+                                {new Date(inspection.visitDate).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                            </Text>
                         </View>
                     </View>
                 </View>

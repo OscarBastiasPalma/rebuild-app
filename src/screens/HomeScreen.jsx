@@ -145,15 +145,17 @@ const HomeScreen = ({ navigation, route }) => {
                         <Text style={styles.noInspectionsText}>No hay inspecciones pendientes</Text>
                     ) : (
                         pendingInspections.map((insp, idx) => (
-                            <View
+                            <TouchableOpacity
                                 key={idx}
-                                style={styles.pendingItem}
+                                onPress={() => navigation.navigate('InspectionSummaryPending', { inspectionId: insp.id })}
                             >
-                                <Text style={styles.pendingDate}>{new Date(insp.visitDate).toLocaleDateString()}</Text>
-                                <Text style={styles.pendingTime}>
-                                    {new Date(insp.visitDate).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })} hrs. - {insp.property?.address}
-                                </Text>
-                            </View>
+                                <View style={styles.pendingItem}>
+                                    <Text style={styles.pendingDate}>{new Date(insp.visitDate).toLocaleDateString()}</Text>
+                                    <Text style={styles.pendingTime}>
+                                        {new Date(insp.visitDate).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })} hrs. - {insp.property?.address}
+                                    </Text>
+                                </View>
+                            </TouchableOpacity>
                         ))
                     )}
                 </View>
