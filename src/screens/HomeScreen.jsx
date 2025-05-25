@@ -3,6 +3,7 @@ import { View, Text, StyleSheet, TouchableOpacity, Image, ScrollView, TextInput,
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import env from '../config';
 import { useFocusEffect } from '@react-navigation/native';
+import { Ionicons, MaterialIcons } from '@expo/vector-icons';
 
 const comunas = ['Todas', 'San Miguel', 'La Florida'];
 
@@ -37,7 +38,6 @@ const HomeScreen = ({ navigation, route }) => {
                 const res = await fetch(url, { credentials: 'include' });
                 if (!res.ok) throw new Error('No se pudo obtener el perfil');
                 const data = await res.json();
-                console.log('Respuesta del endpoint:', data);
                 setUser(data);
             } catch (e) {
                 setUser(null);
@@ -105,6 +105,31 @@ const HomeScreen = ({ navigation, route }) => {
         return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase();
     };
 
+    const handleRefresh = useCallback(() => {
+        setLoadingInspections(true);
+        const fetchInspections = async () => {
+            try {
+                const { API_URL } = env();
+                // Fetch pendientes
+                const resPend = await fetch(`${API_URL}/inspections?status=PENDIENTE`, { credentials: 'include' });
+                const dataPend = resPend.ok ? await resPend.json() : { inspections: [] };
+                setPendingInspections(dataPend.inspections || []);
+                // Fetch disponibles
+                const resDisp = await fetch(`${API_URL}/inspections?status=SOLICITADO`, { credentials: 'include' });
+                const dataDisp = resDisp.ok ? await resDisp.json() : { inspections: [] };
+                setAvailableInspections(dataDisp.inspections || []);
+                setFilteredInspections(dataDisp.inspections || []);
+            } catch (e) {
+                setPendingInspections([]);
+                setAvailableInspections([]);
+                setFilteredInspections([]);
+            } finally {
+                setLoadingInspections(false);
+            }
+        };
+        fetchInspections();
+    }, []);
+
     if (loadingUser) {
         return (
             <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: '#FFA500' }}>
@@ -114,7 +139,6 @@ const HomeScreen = ({ navigation, route }) => {
     }
 
     const fullName = getFullName(user);
-    console.log('URL de la imagen de perfil:', user?.profilePicture);
 
     return (
         <ScrollView contentContainerStyle={styles.container}>
@@ -122,6 +146,10 @@ const HomeScreen = ({ navigation, route }) => {
                 {/* Botón de perfil (iniciales) en la esquina superior izquierda */}
                 <TouchableOpacity style={styles.profileCircleLeft} onPress={() => navigation.navigate('Profile')}>
                     <Text style={styles.profileCircleText}>{getInitials(fullName)}</Text>
+                </TouchableOpacity>
+                {/* Botón de refrescar en la esquina superior derecha */}
+                <TouchableOpacity style={styles.refreshCircleRight} onPress={handleRefresh}>
+                    <MaterialIcons name="refresh" size={24} color="#FFA500" />
                 </TouchableOpacity>
                 {/* Botón de cerrar sesión en la esquina superior derecha */}
                 <TouchableOpacity style={styles.logoutCircleRight} onPress={() => setModalVisible(true)}>
@@ -147,7 +175,13 @@ const HomeScreen = ({ navigation, route }) => {
                         pendingInspections.map((insp, idx) => (
                             <TouchableOpacity
                                 key={idx}
-                                onPress={() => navigation.navigate('InspectionSummaryPending', { inspectionId: insp.id })}
+                                onPress={() => {
+
+                                    navigation.navigate('InspectionSummaryPending', {
+                                        inspectionId: insp.id,
+                                        inspection: insp
+                                    });
+                                }}
                             >
                                 <View style={styles.pendingItem}>
                                     <Text style={styles.pendingDate}>{new Date(insp.visitDate).toLocaleDateString()}</Text>
@@ -526,6 +560,25 @@ const styles = StyleSheet.create({
         color: '#666',
         fontStyle: 'italic',
         marginTop: 4,
+    },
+    refreshCircleRight: {
+        position: 'absolute',
+        top: 12,
+        right: 60,
+        width: 36,
+        height: 36,
+        borderRadius: 18,
+        backgroundColor: '#fff',
+        borderWidth: 2,
+        borderColor: '#FFA500',
+        alignItems: 'center',
+        justifyContent: 'center',
+        shadowColor: '#000',
+        shadowOffset: { width: 0, height: 1 },
+        shadowOpacity: 0.1,
+        shadowRadius: 2,
+        elevation: 2,
+        zIndex: 20,
     },
 });
 

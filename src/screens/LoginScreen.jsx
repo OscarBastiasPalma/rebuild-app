@@ -5,7 +5,7 @@ import { useAuth } from '../context/AuthContext';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import env from '../config';
 
-const { API_URL } = env();
+const { API_URL } = env('dev');
 
 const LoginScreen = () => {
     const [email, setEmail] = useState('');
@@ -31,31 +31,8 @@ const LoginScreen = () => {
 
         setLoading(true);
         try {
-            const response = await fetch(`${API_URL}/auth/login`, {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                },
-                body: JSON.stringify({
-                    email,
-                    password,
-                    userType: 'PROFESSIONAL'
-                })
-            });
-
-            const data = await response.json();
-
-            if (!response.ok) {
-                throw new Error(data.error || 'Error al iniciar sesión');
-            }
-
-            // Verificar si el usuario existe en la respuesta
-            if (!data.user) {
-                throw new Error('Error: No se recibió información del usuario');
-            }
-
-            // Actualizar el contexto de autenticación
-            login(data.user);
+            // Usar la función login del contexto de autenticación
+            const data = await login(email, password, 'PROFESSIONAL');
 
             // Navegar según el estado del perfil
             if (!data.user.profileCompleted) {
@@ -64,8 +41,8 @@ const LoginScreen = () => {
                 navigation.replace('Home');
             }
         } catch (error) {
+            console.error('Login error details:', error);
             Alert.alert('Error', error.message || 'Error al iniciar sesión');
-            console.error('Login error:', error);
         } finally {
             setLoading(false);
         }
