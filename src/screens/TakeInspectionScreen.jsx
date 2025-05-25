@@ -2,10 +2,12 @@ import React, { useEffect, useState } from 'react';
 import { View, Text, StyleSheet, Image, ScrollView, TouchableOpacity, ActivityIndicator, Alert } from 'react-native';
 import { useRoute, useNavigation } from '@react-navigation/native';
 import env from '../config';
+import { useAuth } from '../context/AuthContext';
 
 const TakeInspectionScreen = () => {
     const route = useRoute();
     const navigation = useNavigation();
+    const { user } = useAuth();
     const { inspectionId } = route.params;
     const [inspection, setInspection] = useState(null);
     const [loading, setLoading] = useState(true);
@@ -32,30 +34,52 @@ const TakeInspectionScreen = () => {
 
     const handleTakeInspection = async () => {
         try {
-            const { API_URL } = env();
-            const res = await fetch(`${API_URL}/inspections`, {
-                method: 'PATCH',
-                headers: { 'Content-Type': 'application/json' },
-                credentials: 'include',
-                body: JSON.stringify({ id: inspection.id, status: 'PENDIENTE' })
-            });
-            if (!res.ok) {
-                const errorText = await res.text();
-                console.log('PATCH error:', errorText);
-                throw new Error('No se pudo actualizar la inspección');
+            if (!user) {
+                Alert.alert('Error', 'No estás autenticado');
+                return;
             }
-            Alert.alert(
-                'Éxito',
-                'Inspección tomada con éxito.',
-                [
-                    {
-                        text: 'OK',
-                        onPress: () => navigation.navigate('Home')
-                    }
-                ]
-            );
-        } catch (e) {
-            Alert.alert('Error', 'No se pudo tomar la inspección. Intenta nuevamente.');
+
+            const { API_URL } = env();
+
+            // Obtener el perfil profesional usando el nuevo endpoint
+            const profileResponse = await fetch(`${API_URL}/professionals/profile/${user.id}`, {
+                credentials: 'include'
+            });
+
+            if (!profileResponse.ok) {
+                Alert.alert('Error', 'No se pudo obtener tu perfil profesional');
+                return;
+            }
+
+            const profileData = await profileResponse.json();
+            if (!profileData || !profileData.id) {
+                Alert.alert('Error', 'No tienes un perfil profesional configurado');
+                return;
+            }
+            // Ahora tomar la inspección con el ID del perfil profesional
+            const response = await fetch(`${API_URL}/inspections`, {
+                method: 'PATCH',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                credentials: 'include',
+                body: JSON.stringify({
+                    id: inspection.id,
+                    status: 'PENDIENTE',
+                    inspectorId: profileData.id
+                })
+            });
+
+            if (response.ok) {
+                Alert.alert('Éxito', 'Inspección tomada correctamente');
+                navigation.goBack();
+            } else {
+                const error = await response.json();
+                Alert.alert('Error', error.error || 'Error al tomar la inspección');
+            }
+        } catch (error) {
+            console.error('Error al tomar inspección:', error);
+            Alert.alert('Error', 'Error al tomar la inspección');
         }
     };
 

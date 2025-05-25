@@ -1,34 +1,63 @@
-import React, { useState } from 'react';
-import { View, Text, StyleSheet, Image, ScrollView, TouchableOpacity, TextInput, Modal, Alert, Switch } from 'react-native';
+import React, { useState, useEffect } from 'react';
+import { View, Text, StyleSheet, Image, ScrollView, TouchableOpacity, TextInput, Modal, Alert, Switch, ActivityIndicator } from 'react-native';
 import * as ImagePicker from 'expo-image-picker';
 import { useRoute, useNavigation } from '@react-navigation/native';
-import inspectionTemplates from '../../assets/inspectionTemplates.json';
-
-const partidas = [
-    'Muros',
-    'Pisos',
-    'Cielos',
-    'Puertas',
-    'Ventanas',
-    'Instalaciones eléctricas',
-    'Instalaciones sanitarias',
-];
+import axios from 'axios';
+import env from '../config';
 
 const InspectionReportScreen = () => {
     const route = useRoute();
     const navigation = useNavigation();
-    const { inspectionId } = route.params;
-    const inspection = inspectionTemplates.find(i => i.id === inspectionId);
+    const { inspectionId, inspection, property, commune, city, region } = route.params;
 
     const [items, setItems] = useState([]);
+    const [partidas, setPartidas] = useState([]);
+    const [loadingPartidas, setLoadingPartidas] = useState(true);
     const [current, setCurrent] = useState({
         foto: '',
         partida: '',
         descripcion: '',
-        cantidad: 1,
+        cantidad: 0,
         precioUnitario: false,
     });
     const [modalVisible, setModalVisible] = useState(false);
+    const [partidaModalVisible, setPartidaModalVisible] = useState(false);
+
+    useEffect(() => {
+        fetchPartidas();
+    }, []);
+
+    const fetchPartidas = async () => {
+        try {
+            setLoadingPartidas(true);
+            const { API_URL } = env();
+            const url = `${API_URL}/apus`;
+
+            const response = await fetch(url, {
+                method: 'GET',
+                headers: {
+                    'Accept': 'application/json',
+                    'Content-Type': 'application/json',
+                },
+            });
+
+            if (!response.ok) {
+                throw new Error(`HTTP error! status: ${response.status}`);
+            }
+
+            const data = await response.json();
+
+            if (data && data.apus && Array.isArray(data.apus)) {
+                setPartidas(data.apus);
+            } else {
+                Alert.alert('Error', 'No se pudieron cargar las partidas');
+            }
+        } catch (error) {
+            Alert.alert('Error', 'No se pudieron cargar las partidas');
+        } finally {
+            setLoadingPartidas(false);
+        }
+    };
 
     const pickImage = async () => {
         Alert.alert(
@@ -79,7 +108,46 @@ const InspectionReportScreen = () => {
     };
 
     const handleCantidad = (delta) => {
-        setCurrent((prev) => ({ ...prev, cantidad: Math.max(1, prev.cantidad + delta) }));
+        setCurrent((prev) => ({
+            ...prev,
+            cantidad: Math.max(0.01, parseFloat((prev.cantidad + delta).toFixed(2)))
+        }));
+    };
+
+    const handleCantidadChange = (value) => {
+        // Si el valor está vacío, establecer a 0
+        if (value === '') {
+            setCurrent(prev => ({ ...prev, cantidad: 0 }));
+            return;
+        }
+
+        // Permitir un punto decimal al inicio
+        if (value === '.') {
+            setCurrent(prev => ({ ...prev, cantidad: 0 }));
+            return;
+        }
+
+        // Remover cualquier carácter que no sea número o punto decimal
+        const cleanValue = value.replace(/[^0-9.]/g, '');
+
+        // Asegurar que solo haya un punto decimal
+        const parts = cleanValue.split('.');
+        const formattedValue = parts.length > 2 ? parts[0] + '.' + parts.slice(1).join('') : cleanValue;
+
+        // Si el valor termina en punto, mantenerlo para permitir decimales
+        if (value.endsWith('.')) {
+            setCurrent(prev => ({ ...prev, cantidad: formattedValue }));
+            return;
+        }
+
+        // Convertir a número y validar
+        const numValue = parseFloat(formattedValue);
+        if (!isNaN(numValue)) {
+            setCurrent(prev => ({
+                ...prev,
+                cantidad: numValue
+            }));
+        }
     };
 
     const handleAddItem = () => {
@@ -88,7 +156,7 @@ const InspectionReportScreen = () => {
             return;
         }
         setItems([...items, current]);
-        setCurrent({ foto: '', partida: '', descripcion: '', cantidad: 1, precioUnitario: false });
+        setCurrent({ foto: '', partida: '', descripcion: '', cantidad: 0, precioUnitario: false });
     };
 
     const handleFinish = () => {
@@ -103,7 +171,7 @@ const InspectionReportScreen = () => {
         setModalVisible(false);
         navigation.replace('InspectionSummary', { inspectionId, items });
         setItems([]);
-        setCurrent({ foto: '', partida: '', descripcion: '', cantidad: 1, precioUnitario: false });
+        setCurrent({ foto: '', partida: '', descripcion: '', cantidad: 0, precioUnitario: false });
     };
 
     if (!inspection) return <Text style={{ margin: 40 }}>Inspección no encontrada</Text>;
@@ -116,17 +184,38 @@ const InspectionReportScreen = () => {
                     <View style={styles.avatar} />
                     <View style={{ marginLeft: 10 }}>
                         <Text style={styles.headerTitle}>Informe de Inspección</Text>
-                        <Text style={styles.headerSubtitle}>{inspection.titulo}</Text>
+                        <Text style={styles.headerSubtitle}>{property?.address || 'Sin dirección'}</Text>
                     </View>
                 </View>
                 <View style={styles.infoBox}>
                     <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-                        <Image source={{ uri: inspection.imagen }} style={styles.image} />
+                        <Image
+                            source={{
+                                uri: property?.photos?.[0]?.url ||
+                                    'https://images.unsplash.com/photo-1506744038136-46273834b3fb?auto=format&fit=crop&w=400&q=80'
+                            }}
+                            style={styles.image}
+                        />
                         <View style={{ marginLeft: 10 }}>
-                            <Text style={styles.label}><Text style={styles.bold}>Proyecto:</Text> {inspection.proyecto}</Text>
-                            <Text style={styles.label}><Text style={styles.bold}>Dirección</Text>  {inspection.direccion}</Text>
-                            <Text style={styles.label}><Text style={styles.bold}>Fecha de visita</Text></Text>
-                            <Text style={styles.bold}>{inspection.fechaVisita}</Text>
+                            <Text style={styles.label}>
+                                <Text style={styles.bold}>Dirección:</Text> {property?.address}
+                            </Text>
+                            <Text style={styles.label}>
+                                <Text style={styles.bold}>Comuna:</Text> {commune?.name}
+                            </Text>
+                            <Text style={styles.label}>
+                                <Text style={styles.bold}>Ciudad:</Text> {city?.name}
+                            </Text>
+                            <Text style={styles.label}>
+                                <Text style={styles.bold}>Región:</Text> {region?.name}
+                            </Text>
+                            <Text style={styles.label}>
+                                <Text style={styles.bold}>Fecha programada:</Text>
+                            </Text>
+                            <Text style={styles.bold}>
+                                {new Date(inspection.visitDate).toLocaleDateString()} -
+                                {new Date(inspection.visitDate).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                            </Text>
                         </View>
                     </View>
                 </View>
@@ -151,12 +240,19 @@ const InspectionReportScreen = () => {
                         )}
                     </TouchableOpacity>
                     <View style={styles.row}>
-                        <TextInput
-                            style={styles.input}
-                            value={current.partida}
-                            placeholder="Selecciona una partida"
-                            onChangeText={v => setCurrent({ ...current, partida: v })}
-                        />
+                        <TouchableOpacity
+                            style={styles.pickerContainer}
+                            onPress={() => setPartidaModalVisible(true)}
+                            disabled={loadingPartidas}
+                        >
+                            {loadingPartidas ? (
+                                <ActivityIndicator size="small" color="#FFA500" />
+                            ) : (
+                                <Text style={styles.pickerText}>
+                                    {current.partida || "Selecciona una partida"}
+                                </Text>
+                            )}
+                        </TouchableOpacity>
                     </View>
                     <Text style={styles.label}>Descripción de la observación</Text>
                     <TextInput
@@ -168,18 +264,15 @@ const InspectionReportScreen = () => {
                     />
                     <View style={styles.row}>
                         <Text style={styles.label}>Cantidad</Text>
-                        <TouchableOpacity style={styles.qtyButton} onPress={() => handleCantidad(-1)}>
-                            <Text style={styles.qtyButtonText}>-</Text>
-                        </TouchableOpacity>
-                        <TextInput
-                            style={styles.qtyInput}
-                            value={String(current.cantidad)}
-                            keyboardType="numeric"
-                            onChangeText={v => setCurrent({ ...current, cantidad: Math.max(1, parseInt(v) || 1) })}
-                        />
-                        <TouchableOpacity style={styles.qtyButton} onPress={() => handleCantidad(1)}>
-                            <Text style={styles.qtyButtonText}>+</Text>
-                        </TouchableOpacity>
+                        <View style={styles.qtyContainer}>
+                            <TextInput
+                                style={styles.qtyInput}
+                                value={typeof current.cantidad === 'number' ? current.cantidad.toString() : current.cantidad}
+                                keyboardType="decimal-pad"
+                                onChangeText={handleCantidadChange}
+                                placeholder="0.00"
+                            />
+                        </View>
                     </View>
 
                     <TouchableOpacity style={styles.addButton} onPress={handleAddItem}>
@@ -210,6 +303,52 @@ const InspectionReportScreen = () => {
                         </View>
                     </View>
                 </View>
+            </Modal>
+            {/* Modal para selección de partida */}
+            <Modal
+                visible={partidaModalVisible}
+                transparent={true}
+                animationType="slide"
+                onRequestClose={() => setPartidaModalVisible(false)}
+            >
+                <TouchableOpacity
+                    style={styles.modalOverlay}
+                    activeOpacity={1}
+                    onPress={() => setPartidaModalVisible(false)}
+                >
+                    <View style={styles.partidaModalContent}>
+                        <View style={styles.partidaModalHeader}>
+                            <Text style={styles.partidaModalTitle}>Selecciona una partida</Text>
+                            <TouchableOpacity onPress={() => setPartidaModalVisible(false)}>
+                                <Text style={styles.partidaModalClose}>✕</Text>
+                            </TouchableOpacity>
+                        </View>
+                        {loadingPartidas ? (
+                            <View style={styles.loadingContainer}>
+                                <ActivityIndicator size="large" color="#FFA500" />
+                            </View>
+                        ) : (
+                            <ScrollView style={styles.partidaList}>
+                                {partidas && partidas.length > 0 ? (
+                                    partidas.map((partida, index) => (
+                                        <TouchableOpacity
+                                            key={partida.id || index}
+                                            style={styles.partidaOption}
+                                            onPress={() => {
+                                                setCurrent({ ...current, partida: partida.name });
+                                                setPartidaModalVisible(false);
+                                            }}
+                                        >
+                                            <Text style={styles.partidaOptionText}>{partida.name}</Text>
+                                        </TouchableOpacity>
+                                    ))
+                                ) : (
+                                    <Text style={styles.noPartidasText}>No hay partidas disponibles</Text>
+                                )}
+                            </ScrollView>
+                        )}
+                    </View>
+                </TouchableOpacity>
             </Modal>
         </ScrollView>
     );
@@ -341,25 +480,18 @@ const styles = StyleSheet.create({
         minHeight: 60,
         marginBottom: 8,
     },
-    qtyButton: {
-        backgroundColor: '#FFA500',
+    qtyContainer: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        borderWidth: 1,
+        borderColor: '#FFA500',
         borderRadius: 5,
-        padding: 6,
-        marginHorizontal: 4,
-    },
-    qtyButtonText: {
-        color: '#fff',
-        fontWeight: 'bold',
-        fontSize: 16,
+        backgroundColor: '#fff',
     },
     qtyInput: {
-        width: 40,
-        borderColor: '#FFA500',
-        borderWidth: 1,
-        borderRadius: 5,
-        padding: 4,
+        width: 80,
+        padding: 8,
         fontSize: 13,
-        backgroundColor: '#fff',
         textAlign: 'center',
     },
     addButton: {
@@ -428,6 +560,70 @@ const styles = StyleSheet.create({
         color: '#fff',
         fontWeight: 'bold',
         fontSize: 15,
+    },
+    pickerContainer: {
+        flex: 1,
+        borderColor: '#FFA500',
+        borderWidth: 1,
+        borderRadius: 5,
+        backgroundColor: '#fff',
+        marginRight: 8,
+        padding: 10,
+        height: 40,
+        justifyContent: 'center',
+    },
+    pickerText: {
+        fontSize: 13,
+        color: '#333',
+    },
+    partidaModalContent: {
+        backgroundColor: 'white',
+        marginTop: 'auto',
+        borderTopLeftRadius: 20,
+        borderTopRightRadius: 20,
+        padding: 20,
+        maxHeight: '80%',
+    },
+    partidaModalHeader: {
+        flexDirection: 'row',
+        justifyContent: 'space-between',
+        alignItems: 'center',
+        marginBottom: 15,
+        paddingBottom: 10,
+        borderBottomWidth: 1,
+        borderBottomColor: '#eee',
+    },
+    partidaModalTitle: {
+        fontSize: 18,
+        fontWeight: 'bold',
+    },
+    partidaModalClose: {
+        fontSize: 20,
+        color: '#666',
+        padding: 5,
+    },
+    partidaList: {
+        maxHeight: '80%',
+    },
+    partidaOption: {
+        paddingVertical: 15,
+        borderBottomWidth: 1,
+        borderBottomColor: '#eee',
+    },
+    partidaOptionText: {
+        fontSize: 16,
+        color: '#333',
+    },
+    loadingContainer: {
+        padding: 20,
+        alignItems: 'center',
+        justifyContent: 'center',
+    },
+    noPartidasText: {
+        fontSize: 16,
+        color: '#333',
+        textAlign: 'center',
+        marginTop: 20,
     },
 });
 

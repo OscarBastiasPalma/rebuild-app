@@ -11,6 +11,7 @@ import CompleteProfileScreen from './src/screens/CompleteProfileScreen';
 import TakeInspectionScreen from './src/screens/TakeInspectionScreen';
 import InspectionReportScreen from './src/screens/InspectionReportScreen';
 import InspectionSummaryScreen from './src/screens/InspectionSummaryScreen';
+import InspectionSummaryPendingScreen from './src/screens/InspectionSummaryPendingScreen';
 
 const Stack = createStackNavigator();
 
@@ -18,7 +19,13 @@ export default function App() {
   return (
     <AuthProvider>
       <NavigationContainer>
-        <Stack.Navigator initialRouteName="Login" screenOptions={{ headerShown: false }}>
+        <Stack.Navigator
+          initialRouteName="Login"
+          screenOptions={{
+            headerShown: false,
+            cardStyle: { backgroundColor: '#FFA500' }
+          }}
+        >
           <Stack.Screen name="Login" component={LoginScreen} />
           <Stack.Screen name="Home" component={HomeScreen} />
           <Stack.Screen name="ForgotPassword" component={ForgotPasswordScreen} />
@@ -28,6 +35,7 @@ export default function App() {
           <Stack.Screen name="TakeInspection" component={TakeInspectionScreen} />
           <Stack.Screen name="InspectionReport" component={InspectionReportScreen} />
           <Stack.Screen name="InspectionSummary" component={InspectionSummaryScreen} />
+          <Stack.Screen name="InspectionSummaryPending" component={InspectionSummaryPendingScreen} />
         </Stack.Navigator>
       </NavigationContainer>
     </AuthProvider>
