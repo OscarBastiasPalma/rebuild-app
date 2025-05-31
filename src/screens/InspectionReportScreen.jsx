@@ -167,11 +167,59 @@ const InspectionReportScreen = () => {
         setModalVisible(true);
     };
 
-    const confirmFinish = () => {
-        setModalVisible(false);
-        navigation.replace('InspectionSummary', { inspectionId, items });
-        setItems([]);
-        setCurrent({ foto: '', partida: '', descripcion: '', cantidad: 0, precioUnitario: false });
+    const confirmFinish = async () => {
+        try {
+            const { API_URL } = env();
+
+            // Log all relevant data
+            console.log('=== Inspection Report Data ===');
+            console.log('Inspection ID:', inspectionId);
+            console.log('Property:', {
+                address: property?.address,
+                commune: commune?.name,
+                city: city?.name,
+                region: region?.name
+            });
+            console.log('Inspection Details:', {
+                visitDate: inspection.visitDate,
+                items: items
+            });
+            console.log('==========================');
+
+            // Prepare the data for the API
+            const reportData = {
+                inspectionId,
+                items: items.map(item => ({
+                    photo: item.foto,
+                    description: item.descripcion,
+                    amount: item.cantidad,
+                    apu: {
+                        name: item.partida
+                    }
+                }))
+            };
+
+            console.log('Sending data to API:', reportData);
+
+            // Make the API call to create the report and update inspection
+            const response = await axios.post(`${API_URL}/inspections/${inspectionId}/report`, reportData);
+
+            if (response.status === 200) {
+                setModalVisible(false);
+                navigation.replace('InspectionSummary', { inspectionId, items });
+                setItems([]);
+                setCurrent({ foto: '', partida: '', descripcion: '', cantidad: 0, precioUnitario: false });
+            } else {
+                Alert.alert('Error', 'No se pudo guardar el informe de inspección');
+            }
+        } catch (error) {
+            console.error('Error saving inspection report:', error);
+            const errorMessage = error.response?.data?.error || error.response?.data?.details || error.message;
+            Alert.alert(
+                'Error',
+                `No se pudo guardar el informe de inspección: ${errorMessage}`
+            );
+        }
     };
 
     if (!inspection) return <Text style={{ margin: 40 }}>Inspección no encontrada</Text>;
