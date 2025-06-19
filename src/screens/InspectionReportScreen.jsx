@@ -4,11 +4,15 @@ import * as ImagePicker from 'expo-image-picker';
 import { useRoute, useNavigation } from '@react-navigation/native';
 import axios from 'axios';
 import env from '../config';
+import { useSession } from '../context/SessionContext';
+import { Ionicons } from '@expo/vector-icons';
+import Constants from 'expo-constants';
 
 const InspectionReportScreen = () => {
     const route = useRoute();
     const navigation = useNavigation();
     const { inspectionId, inspection, property, commune, city, region } = route.params;
+    const { session } = useSession();
 
     const [items, setItems] = useState([]);
     const [partidas, setPartidas] = useState([]);
@@ -22,6 +26,7 @@ const InspectionReportScreen = () => {
     });
     const [modalVisible, setModalVisible] = useState(false);
     const [partidaModalVisible, setPartidaModalVisible] = useState(false);
+    const [loading, setLoading] = useState(false);
 
     useEffect(() => {
         fetchPartidas();
@@ -110,7 +115,7 @@ const InspectionReportScreen = () => {
     const handleCantidad = (delta) => {
         setCurrent((prev) => ({
             ...prev,
-            cantidad: Math.max(0.01, parseFloat((prev.cantidad + delta).toFixed(2)))
+            cantidad: Math.max(0, parseFloat((prev.cantidad + delta).toFixed(2)))
         }));
     };
 
@@ -145,7 +150,7 @@ const InspectionReportScreen = () => {
         if (!isNaN(numValue)) {
             setCurrent(prev => ({
                 ...prev,
-                cantidad: numValue
+                cantidad: numValue >= 0 ? numValue : 0
             }));
         }
     };
@@ -155,8 +160,30 @@ const InspectionReportScreen = () => {
             Alert.alert('Completa todos los campos obligatorios');
             return;
         }
-        setItems([...items, current]);
-        setCurrent({ foto: '', partida: '', descripcion: '', cantidad: 0, precioUnitario: false });
+
+        // Find the selected APU from partidas
+        const selectedApu = partidas.find(p => p.name === current.partida);
+        if (!selectedApu) {
+            Alert.alert('Error', 'No se encontró la partida seleccionada');
+            return;
+        }
+
+        // Add the item with APU data
+        setItems([...items, {
+            ...current,
+            apuName: selectedApu.name,
+            apuTotal: current.cantidad * selectedApu.total,
+            precioUnitario: selectedApu.total
+        }]);
+
+        // Reset current item
+        setCurrent({
+            foto: '',
+            partida: '',
+            descripcion: '',
+            cantidad: 0,
+            precioUnitario: false
+        });
     };
 
     const handleFinish = () => {
@@ -167,58 +194,29 @@ const InspectionReportScreen = () => {
         setModalVisible(true);
     };
 
-    const confirmFinish = async () => {
+    const handleSubmit = async () => {
         try {
-            const { API_URL } = env();
-
-            // Log all relevant data
-            console.log('=== Inspection Report Data ===');
-            console.log('Inspection ID:', inspectionId);
-            console.log('Property:', {
-                address: property?.address,
-                commune: commune?.name,
-                city: city?.name,
-                region: region?.name
-            });
-            console.log('Inspection Details:', {
-                visitDate: inspection.visitDate,
-                items: items
-            });
-            console.log('==========================');
-
-            // Prepare the data for the API
-            const reportData = {
-                inspectionId,
-                items: items.map(item => ({
-                    photo: item.foto,
-                    description: item.descripcion,
-                    amount: item.cantidad,
-                    apu: {
-                        name: item.partida
-                    }
-                }))
-            };
-
-            console.log('Sending data to API:', reportData);
-
-            // Make the API call to create the report and update inspection
-            const response = await axios.post(`${API_URL}/inspections/${inspectionId}/report`, reportData);
-
-            if (response.status === 200) {
-                setModalVisible(false);
-                navigation.replace('InspectionSummary', { inspectionId, items });
-                setItems([]);
-                setCurrent({ foto: '', partida: '', descripcion: '', cantidad: 0, precioUnitario: false });
-            } else {
-                Alert.alert('Error', 'No se pudo guardar el informe de inspección');
+            if (items.length === 0) {
+                Alert.alert('Error', 'Debes agregar al menos un item');
+                return;
             }
+
+            setModalVisible(false);
+
+            // Navegamos a InspectionSummary con los datos
+            navigation.navigate('InspectionSummary', {
+                inspectionId: inspection.id,
+                inspection: inspection,
+                report: {
+                    items: items
+                }
+            });
+
         } catch (error) {
-            console.error('Error saving inspection report:', error);
-            const errorMessage = error.response?.data?.error || error.response?.data?.details || error.message;
-            Alert.alert(
-                'Error',
-                `No se pudo guardar el informe de inspección: ${errorMessage}`
-            );
+            console.error('Error:', error);
+            Alert.alert('Error', 'Error al procesar la información');
+        } finally {
+            setLoading(false);
         }
     };
 
@@ -311,12 +309,11 @@ const InspectionReportScreen = () => {
                         numberOfLines={3}
                     />
                     <View style={styles.row}>
-                        <Text style={styles.label}>Cantidad</Text>
+                        <Text style={styles.label}>Cantidad  </Text>
                         <View style={styles.qtyContainer}>
                             <TextInput
                                 style={styles.qtyInput}
                                 value={typeof current.cantidad === 'number' ? current.cantidad.toString() : current.cantidad}
-                                keyboardType="decimal-pad"
                                 onChangeText={handleCantidadChange}
                                 placeholder="0.00"
                             />
@@ -342,7 +339,7 @@ const InspectionReportScreen = () => {
                     <View style={styles.modalContent}>
                         <Text style={styles.modalTitle}>¿Estás seguro de que la información es correcta?</Text>
                         <View style={styles.modalButtons}>
-                            <TouchableOpacity style={styles.modalButton} onPress={confirmFinish}>
+                            <TouchableOpacity style={styles.modalButton} onPress={handleSubmit}>
                                 <Text style={styles.modalButtonText}>Sí, guardar</Text>
                             </TouchableOpacity>
                             <TouchableOpacity style={[styles.modalButton, { backgroundColor: '#ccc' }]} onPress={() => setModalVisible(false)}>

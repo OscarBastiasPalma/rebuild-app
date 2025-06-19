@@ -67,8 +67,14 @@ export const AuthProvider = ({ children }) => {
                 throw new Error(data.error || 'Error al iniciar sesión');
             }
 
+            // Extract token from the response data
+            const token = data.token;
+            if (!token) {
+                throw new Error('No se pudo obtener el token de autenticación');
+            }
+
             setUser(data.user);
-            return data;
+            return { data, token };
         } catch (error) {
             console.error('Login error:', error);
             throw error;
