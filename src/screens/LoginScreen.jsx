@@ -6,8 +6,6 @@ import { useSession } from '../context/SessionContext';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import env from '../config';
 
-const { API_URL } = env('dev');
-
 const LoginScreen = () => {
     const [email, setEmail] = useState('');
     const [password, setPassword] = useState('');

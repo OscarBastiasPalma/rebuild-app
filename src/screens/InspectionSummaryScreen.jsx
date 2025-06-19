@@ -494,8 +494,11 @@ VALIDACIONES:
         `;
         try {
             const { uri } = await Print.printToFileAsync({ html });
-            console.log('PDF generado en:', uri);
-            console.log('Ruta local del PDF:', uri);
+            console.log('📄 PDF generado en:', uri);
+            console.log('📂 Ruta local del PDF:', uri);
+
+            // Subir PDF a Cloudinary
+            await uploadPDFToCloudinary(uri);
 
             // Verificar si podemos compartir
             const isAvailable = await Sharing.isAvailableAsync();
@@ -511,6 +514,114 @@ VALIDACIONES:
         } catch (error) {
             console.error('Error al generar PDF:', error);
             Alert.alert('Error', 'No se pudo generar el PDF');
+        }
+    };
+
+    // Función para subir PDF a Cloudinary
+    const uploadPDFToCloudinary = async (pdfUri) => {
+        try {
+            console.log('🚀 Iniciando subida de PDF a Cloudinary...');
+
+            const { API_URL } = env();
+            if (!API_URL) {
+                console.error('❌ API_URL no configurada');
+                return;
+            }
+
+            // Crear FormData directamente con el archivo
+            const formData = new FormData();
+
+            // En React Native, usamos la URI directamente
+            formData.append('pdf', {
+                uri: pdfUri,
+                type: 'application/pdf',
+                name: `inspection_${inspectionId}_report.pdf`
+            });
+
+            console.log('📤 Enviando PDF al servidor...', {
+                uri: pdfUri,
+                inspectionId: inspectionId,
+                fileName: `inspection_${inspectionId}_report.pdf`
+            });
+
+            const response = await fetch(`${API_URL}/inspections/${inspectionId}/upload-pdf`, {
+                method: 'POST',
+                headers: {
+                    'Authorization': `Bearer ${session.token}`,
+                    'Content-Type': 'multipart/form-data'
+                },
+                body: formData
+            });
+
+            console.log('📡 Response status:', response.status);
+
+            if (response.ok) {
+                const result = await response.json();
+                console.log('✅ PDF subido exitosamente a Cloudinary:', result);
+
+                // Mostrar información sobre las URLs disponibles
+                if (result.alternativeUrls) {
+                    console.log('🔗 URLs alternativas disponibles:', result.alternativeUrls);
+
+                    // Mostrar un mensaje más informativo al usuario
+                    Alert.alert(
+                        'PDF Guardado Exitosamente',
+                        `El PDF se ha guardado en la nube. ${result.accessInfo?.recommendation || ''}`,
+                        [
+                            {
+                                text: 'Entendido',
+                                style: 'default'
+                            },
+                            {
+                                text: 'Ver PDF',
+                                style: 'default',
+                                onPress: () => {
+                                    // Intentar abrir la URL de descarga si está disponible
+                                    const urlToOpen = result.alternativeUrls?.download || result.pdfUrl;
+                                    console.log('🔗 Abriendo URL:', urlToOpen);
+                                    // Aquí podrías usar Linking.openURL(urlToOpen) si quieres abrir el PDF
+                                }
+                            }
+                        ]
+                    );
+                } else {
+                    Alert.alert('Éxito', 'PDF guardado en la nube exitosamente');
+                }
+
+                // Guardar información del PDF para uso posterior
+                if (result.alternativeUrls) {
+                    console.log('💾 Guardando URLs del PDF para uso posterior:', {
+                        direct: result.pdfUrl,
+                        download: result.alternativeUrls.download,
+                        signed: result.alternativeUrls.signed,
+                        expiresAt: result.accessInfo?.expiresAt
+                    });
+                    // Aquí podrías guardar estas URLs en el estado local si necesitas acceso posterior
+                }
+
+            } else {
+                const errorData = await response.json();
+                console.error('❌ Error al subir PDF:', errorData);
+
+                // Mostrar mensaje de error más específico
+                const errorMessage = errorData.suggestion
+                    ? `${errorData.error}\n\nSugerencia: ${errorData.suggestion}`
+                    : errorData.error || 'Error desconocido al subir PDF';
+
+                Alert.alert(
+                    'Problema al Guardar PDF',
+                    `PDF generado localmente, pero no se pudo guardar en la nube.\n\n${errorMessage}`
+                );
+            }
+
+        } catch (error) {
+            console.error('❌ Error al subir PDF a Cloudinary:', error);
+
+            // Mostrar mensaje de error más informativo
+            Alert.alert(
+                'Problema de Conexión',
+                'PDF generado localmente, pero no se pudo conectar con el servicio de almacenamiento. Verifica tu conexión a internet e intenta nuevamente.'
+            );
         }
     };
 
