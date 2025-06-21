@@ -7,6 +7,7 @@ import * as Sharing from 'expo-sharing';
 import * as FileSystem from 'expo-file-system';
 import env from '../config';
 import { useSession } from '../context/SessionContext';
+import { getUFValue, calculateTotalWithUF, formatTotalWithUF } from '../services/ufService';
 
 const InspectionSummaryScreen = () => {
     // Todos los hooks primero - ANTES de cualquier return early
@@ -22,6 +23,9 @@ const InspectionSummaryScreen = () => {
     const [isFinalizingInspection, setIsFinalizingInspection] = useState(false);
     // Estado para los datos completos de la inspección
     const [fullInspection, setFullInspection] = useState(inspection);
+    // Estado para el valor de la UF
+    const [ufData, setUfData] = useState(null);
+    const [isLoadingUF, setIsLoadingUF] = useState(false);
 
     // Función para cargar los datos completos de la inspección incluyendo propietario
     const loadFullInspectionData = async () => {
@@ -231,6 +235,7 @@ VALIDACIONES:
     // useEffect también debe estar con los hooks
     useEffect(() => {
         loadFullInspectionData();
+        loadUFValue(); // Cargar valor de UF al montar el componente
     }, []);
 
     // Función para obtener el perfil profesional del usuario logueado
@@ -264,6 +269,33 @@ VALIDACIONES:
         } catch (error) {
             console.error('❌ Error al obtener perfil profesional:', error);
             return null;
+        }
+    };
+
+    // Función para cargar el valor de la UF
+    const loadUFValue = async () => {
+        try {
+            setIsLoadingUF(true);
+            console.log('🔄 Cargando valor de UF...');
+
+            const ufResult = await getUFValue();
+            setUfData(ufResult);
+
+            if (ufResult.success) {
+                console.log('✅ Valor de UF cargado exitosamente:', ufResult);
+            } else {
+                console.warn('⚠️ No se pudo obtener el valor de UF:', ufResult.error);
+            }
+        } catch (error) {
+            console.error('❌ Error al cargar valor de UF:', error);
+            setUfData({
+                success: false,
+                valor: 0,
+                fechaFormateada: new Date().toLocaleDateString('es-CL'),
+                error: error.message
+            });
+        } finally {
+            setIsLoadingUF(false);
         }
     };
 
@@ -438,6 +470,7 @@ VALIDACIONES:
                         .item-container { margin-bottom: 20px; border-bottom: 1px solid #ccc; padding-bottom: 15px; }
                         h2, h3, h4 { color: #333; }
                         .signature-section { text-align: center; margin-top: 30px; }
+                        .uf-info { background-color: #f8f9fa; padding: 10px; border-radius: 5px; margin: 10px 0; }
                     </style>
                 </head>
                 <body>
@@ -447,6 +480,12 @@ VALIDACIONES:
                     <p><b>Ciudad:</b> ${inspectionData.city?.name}</p>
                     <p><b>Región:</b> ${inspectionData.region?.name}</p>
                     <p><b>Fecha de visita:</b> ${new Date(inspectionData.visitDate).toLocaleDateString()}</p>
+                    ${ufData && ufData.success ? `
+                    <div class="uf-info">
+                        <p><b>Valor UF al día de hoy:</b> $${ufData.valor.toLocaleString('es-CL')}</p>
+                        <p><b>Fecha del valor UF:</b> ${ufData.fechaFormateada}</p>
+                    </div>
+                    ` : ''}
                     <hr/>
                     ${report.items.map((item, idx) => {
             // Determinar qué URL de imagen usar (prioridad: Cloudinary > HTTP > File local > Base64)
@@ -469,6 +508,11 @@ VALIDACIONES:
                 console.log(`❌ PDF: No hay imagen válida para item ${idx}`);
             }
 
+            // Calcular total con UF
+            const totalWithUF = ufData && ufData.success ?
+                calculateTotalWithUF(item.apuTotal, ufData.valor) :
+                item.apuTotal;
+
             return `
                         <div class="item-container">
                             <h4>Item ${idx + 1}</h4>
@@ -476,8 +520,9 @@ VALIDACIONES:
                             <b>Partida:</b> ${item.partida}<br/>
                             <b>Descripción:</b> ${item.descripcion}<br/>
                             <b>Cantidad:</b> ${item.cantidad}<br/>
-                            <b>Precio Unitario:</b> ${item.precioUnitario?.toLocaleString() || 0}<br/>
-                            <b>Total:</b> ${item.apuTotal?.toLocaleString() || 0}
+                            <b>Precio Unitario:</b> ${item.precioUnitario?.toLocaleString() || 0} U.F<br/>
+                            <b>Total:</b> ${item.apuTotal?.toLocaleString() || 0} U.F
+                            ${ufData && ufData.success ? `<br/><b>Total CLP:</b> ${formatTotalWithUF(totalWithUF)}` : ''}
                         </div>
                         `;
         }).join('')}
@@ -677,18 +722,56 @@ VALIDACIONES:
                         </View>
                     </View>
                 </View>
+                {/* Información de UF */}
+                <View style={styles.ufInfoBox}>
+                    <Text style={styles.ufTitle}>Valor UF al día de hoy</Text>
+                    {isLoadingUF ? (
+                        <View style={styles.ufLoadingContainer}>
+                            <ActivityIndicator size="small" color="#FFA500" />
+                            <Text style={styles.ufLoadingText}>Cargando valor de UF...</Text>
+                        </View>
+                    ) : ufData ? (
+                        <View style={styles.ufDataContainer}>
+                            <Text style={styles.ufValue}>
+                                ${ufData.success ? ufData.valor.toLocaleString('es-CL') : 'No disponible'}
+                            </Text>
+                            <Text style={styles.ufDate}>
+                                {ufData.fechaFormateada}
+                            </Text>
+                            {!ufData.success && (
+                                <Text style={styles.ufError}>
+                                    Error: {ufData.error}
+                                </Text>
+                            )}
+                        </View>
+                    ) : (
+                        <Text style={styles.ufError}>No se pudo cargar el valor de UF</Text>
+                    )}
+                </View>
                 {/* Lista de ítems agregados */}
-                {report.items && report.items.map((item, idx) => (
-                    <View key={idx} style={styles.itemBox}>
-                        <Text style={styles.itemTitle}>Item {idx + 1}</Text>
-                        {item.foto ? <Image source={{ uri: item.foto }} style={styles.itemPhoto} /> : null}
-                        <Text style={styles.label}><Text style={styles.bold}>Partida:</Text> {item.partida}</Text>
-                        <Text style={styles.label}><Text style={styles.bold}>Descripción:</Text> {item.descripcion}</Text>
-                        <Text style={styles.label}><Text style={styles.bold}>Cantidad:</Text> {item.cantidad}</Text>
-                        <Text style={styles.label}><Text style={styles.bold}>Precio Unitario:</Text> ${item.precioUnitario?.toLocaleString() || 0}</Text>
-                        <Text style={styles.label}><Text style={styles.bold}>Total:</Text> ${item.apuTotal?.toLocaleString() || 0}</Text>
-                    </View>
-                ))}
+                {report.items && report.items.map((item, idx) => {
+                    // Calcular total con UF si está disponible
+                    const totalWithUF = ufData && ufData.success ?
+                        calculateTotalWithUF(item.apuTotal, ufData.valor) :
+                        item.apuTotal;
+
+                    return (
+                        <View key={idx} style={styles.itemBox}>
+                            <Text style={styles.itemTitle}>Item {idx + 1}</Text>
+                            {item.foto ? <Image source={{ uri: item.foto }} style={styles.itemPhoto} /> : null}
+                            <Text style={styles.label}><Text style={styles.bold}>Partida:</Text> {item.partida}</Text>
+                            <Text style={styles.label}><Text style={styles.bold}>Descripción:</Text> {item.descripcion}</Text>
+                            <Text style={styles.label}><Text style={styles.bold}>Cantidad:</Text> {item.cantidad}</Text>
+                            <Text style={styles.label}><Text style={styles.bold}>Precio Unitario:</Text> {item.precioUnitario?.toLocaleString() || 0} U.F</Text>
+                            <Text style={styles.label}><Text style={styles.bold}>Total:</Text> {item.apuTotal?.toLocaleString() || 0} U.F</Text>
+                            {ufData && ufData.success && (
+                                <Text style={styles.label}>
+                                    <Text style={styles.bold}>Total CLP:</Text> ${formatTotalWithUF(totalWithUF)}
+                                </Text>
+                            )}
+                        </View>
+                    );
+                })}
                 {/* Recuadro de firma */}
                 <Text style={styles.label}>Firma del propietario</Text>
 
@@ -789,6 +872,19 @@ VALIDACIONES:
 
                             formData.append('items', JSON.stringify(itemsData));
                             console.log('📋 Items data enviados:', itemsData);
+
+                            // Agregar información de UF al FormData
+                            if (ufData && ufData.success) {
+                                const ufInfo = {
+                                    valor: ufData.valor,
+                                    fecha: ufData.fecha,
+                                    fechaFormateada: ufData.fechaFormateada
+                                };
+                                formData.append('ufInfo', JSON.stringify(ufInfo));
+                                console.log('📊 Información de UF enviada:', ufInfo);
+                            } else {
+                                console.log('⚠️ No se enviará información de UF (no disponible)');
+                            }
 
                             // Agregar la imagen de la propiedad al FormData
                             const propertyImageUrl = inspection.property?.photos?.[0]?.url;
@@ -1204,6 +1300,49 @@ const styles = StyleSheet.create({
         flexDirection: 'row',
         alignItems: 'center',
         justifyContent: 'center',
+    },
+    ufInfoBox: {
+        width: '100%',
+        borderWidth: 1,
+        borderColor: '#FFA500',
+        borderRadius: 8,
+        padding: 10,
+        marginBottom: 15,
+        backgroundColor: '#fff',
+    },
+    ufTitle: {
+        fontWeight: 'bold',
+        fontSize: 14,
+        marginBottom: 5,
+        color: '#333',
+    },
+    ufLoadingContainer: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        justifyContent: 'center',
+    },
+    ufLoadingText: {
+        marginLeft: 10,
+        fontSize: 13,
+        color: '#666',
+    },
+    ufDataContainer: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        justifyContent: 'space-between',
+    },
+    ufValue: {
+        fontWeight: 'bold',
+        fontSize: 16,
+        color: '#FFA500',
+    },
+    ufDate: {
+        fontSize: 13,
+        color: '#666',
+    },
+    ufError: {
+        color: '#FF4444',
+        fontSize: 13,
     },
 });
 
