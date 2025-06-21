@@ -492,6 +492,10 @@ VALIDACIONES:
                 </body>
             </html>
         `;
+
+
+
+        // ACA SUBO EL PDF A CLOUDINARY
         try {
             const { uri } = await Print.printToFileAsync({ html });
             console.log('📄 PDF generado en:', uri);
@@ -535,20 +539,19 @@ VALIDACIONES:
             formData.append('pdf', {
                 uri: pdfUri,
                 type: 'application/pdf',
-                name: `inspection_${inspectionId}_report.pdf`
+                name: `inspection_${inspectionId}_report`
             });
 
             console.log('📤 Enviando PDF al servidor...', {
                 uri: pdfUri,
                 inspectionId: inspectionId,
-                fileName: `inspection_${inspectionId}_report.pdf`
+                fileName: `inspection_${inspectionId}_report`
             });
 
             const response = await fetch(`${API_URL}/inspections/${inspectionId}/upload-pdf`, {
                 method: 'POST',
                 headers: {
-                    'Authorization': `Bearer ${session.token}`,
-                    'Content-Type': 'multipart/form-data'
+                    'Authorization': `Bearer ${session.token}`
                 },
                 body: formData
             });

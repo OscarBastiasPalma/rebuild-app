@@ -7,7 +7,7 @@ import { useAuth } from '../context/AuthContext';
 const TakeInspectionScreen = () => {
     const route = useRoute();
     const navigation = useNavigation();
-    const { user } = useAuth();
+    const { user, getAuthHeaders } = useAuth();
     const { inspectionId } = route.params;
     const [inspection, setInspection] = useState(null);
     const [loading, setLoading] = useState(true);
@@ -16,7 +16,9 @@ const TakeInspectionScreen = () => {
         const fetchInspection = async () => {
             try {
                 const { API_URL } = env();
-                const res = await fetch(`${API_URL}/inspections?id=${inspectionId}`, { credentials: 'include' });
+                const res = await fetch(`${API_URL}/inspections?id=${inspectionId}`, {
+                    headers: getAuthHeaders()
+                });
                 const data = await res.json();
                 if (data.inspections && data.inspections.length > 0) {
                     setInspection(data.inspections.find(i => i.id === inspectionId));
@@ -30,7 +32,7 @@ const TakeInspectionScreen = () => {
             }
         };
         fetchInspection();
-    }, [inspectionId]);
+    }, [inspectionId, getAuthHeaders]);
 
     const handleTakeInspection = async () => {
         try {
@@ -41,33 +43,44 @@ const TakeInspectionScreen = () => {
 
             const { API_URL } = env();
 
+            console.log('🔍 TakeInspection - Debug info:');
+            console.log('- User:', user);
+            console.log('- Inspection ID:', inspection.id);
+            console.log('- Inspection status:', inspection.status);
+
             // Obtener el perfil profesional usando el nuevo endpoint
             const profileResponse = await fetch(`${API_URL}/professionals/profile/${user.id}`, {
-                credentials: 'include'
+                headers: getAuthHeaders()
             });
 
             if (!profileResponse.ok) {
-                Alert.alert('Error', 'No se pudo obtener tu perfil profesional');
+                const profileError = await profileResponse.json();
+                console.error('Error getting professional profile:', profileError);
+                Alert.alert('Error', `No se pudo obtener tu perfil profesional: ${profileError.error || 'Error desconocido'}`);
                 return;
             }
 
             const profileData = await profileResponse.json();
+            console.log('- Professional profile:', profileData);
+
             if (!profileData || !profileData.id) {
                 Alert.alert('Error', 'No tienes un perfil profesional configurado');
                 return;
             }
+
             // Ahora tomar la inspección con el ID del perfil profesional
+            const requestData = {
+                id: inspection.id,
+                status: 'PENDIENTE',
+                inspectorId: profileData.id
+            };
+
+            console.log('- Request data:', requestData);
+
             const response = await fetch(`${API_URL}/inspections`, {
                 method: 'PATCH',
-                headers: {
-                    'Content-Type': 'application/json',
-                },
-                credentials: 'include',
-                body: JSON.stringify({
-                    id: inspection.id,
-                    status: 'PENDIENTE',
-                    inspectorId: profileData.id
-                })
+                headers: getAuthHeaders(),
+                body: JSON.stringify(requestData)
             });
 
             if (response.ok) {
@@ -75,7 +88,34 @@ const TakeInspectionScreen = () => {
                 navigation.goBack();
             } else {
                 const error = await response.json();
-                Alert.alert('Error', error.error || 'Error al tomar la inspección');
+                console.error('Error response:', error);
+                console.error('Response status:', response.status);
+
+                // Proporcionar mensajes de error más específicos
+                if (response.status === 403) {
+                    Alert.alert(
+                        'Sin Permisos',
+                        'No tienes permisos para tomar esta inspección. Verifica que la inspección esté disponible y que tengas un perfil profesional válido.',
+                        [
+                            {
+                                text: 'Ver Detalles',
+                                onPress: () => {
+                                    console.log('Detalles del error:', {
+                                        userId: user.id,
+                                        userType: user.userType,
+                                        profileId: profileData.id,
+                                        inspectionId: inspection.id,
+                                        inspectionStatus: inspection.status,
+                                        error: error
+                                    });
+                                }
+                            },
+                            { text: 'OK' }
+                        ]
+                    );
+                } else {
+                    Alert.alert('Error', error.error || 'Error al tomar la inspección');
+                }
             }
         } catch (error) {
             console.error('Error al tomar inspección:', error);

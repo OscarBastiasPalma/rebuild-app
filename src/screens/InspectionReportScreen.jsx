@@ -7,12 +7,15 @@ import env from '../config';
 import { useSession } from '../context/SessionContext';
 import { Ionicons } from '@expo/vector-icons';
 import Constants from 'expo-constants';
+import { useAuth } from '../context/AuthContext';
+import DropDownPicker from 'react-native-dropdown-picker';
 
 const InspectionReportScreen = () => {
     const route = useRoute();
     const navigation = useNavigation();
     const { inspectionId, inspection, property, commune, city, region } = route.params;
     const { session } = useSession();
+    const { getAuthHeaders } = useAuth();
 
     const [items, setItems] = useState([]);
     const [partidas, setPartidas] = useState([]);
@@ -28,6 +31,10 @@ const InspectionReportScreen = () => {
     const [partidaModalVisible, setPartidaModalVisible] = useState(false);
     const [loading, setLoading] = useState(false);
 
+    // Estados para el DropDown
+    const [dropdownOpen, setDropdownOpen] = useState(false);
+    const [dropdownItems, setDropdownItems] = useState([]);
+
     useEffect(() => {
         fetchPartidas();
     }, []);
@@ -36,28 +43,25 @@ const InspectionReportScreen = () => {
         try {
             setLoadingPartidas(true);
             const { API_URL } = env();
-            const url = `${API_URL}/apus`;
+            console.log('Fetching APUs from:', `${API_URL}/apus`);
 
-            const response = await fetch(url, {
-                method: 'GET',
-                headers: {
-                    'Accept': 'application/json',
-                    'Content-Type': 'application/json',
-                },
+            const res = await fetch(`${API_URL}/apus`, {
+                headers: getAuthHeaders()
             });
 
-            if (!response.ok) {
-                throw new Error(`HTTP error! status: ${response.status}`);
-            }
+            console.log('APUs response status:', res.status);
+            const data = await res.json();
+            console.log('APUs data received:', data);
 
-            const data = await response.json();
+            setPartidas(data.apus || []);
+            setDropdownItems(data.apus?.map(apu => ({
+                label: apu.name,
+                value: apu.name
+            })) || []);
 
-            if (data && data.apus && Array.isArray(data.apus)) {
-                setPartidas(data.apus);
-            } else {
-                Alert.alert('Error', 'No se pudieron cargar las partidas');
-            }
-        } catch (error) {
+            console.log('APUs loaded:', data.apus?.length || 0);
+        } catch (e) {
+            console.error('Error loading APUs:', e);
             Alert.alert('Error', 'No se pudieron cargar las partidas');
         } finally {
             setLoadingPartidas(false);
@@ -84,7 +88,8 @@ const InspectionReportScreen = () => {
                             quality: 0.5,
                         });
                         if (!result.canceled && result.assets && result.assets.length > 0) {
-                            setCurrent({ ...current, foto: result.assets[0].uri });
+                            const imageUri = result.assets[0].uri;
+                            setCurrent({ ...current, foto: imageUri });
                         }
                     },
                 },
@@ -103,7 +108,8 @@ const InspectionReportScreen = () => {
                             quality: 0.5,
                         });
                         if (!result.canceled && result.assets && result.assets.length > 0) {
-                            setCurrent({ ...current, foto: result.assets[0].uri });
+                            const imageUri = result.assets[0].uri;
+                            setCurrent({ ...current, foto: imageUri });
                         }
                     },
                 },
@@ -364,9 +370,14 @@ const InspectionReportScreen = () => {
                     <View style={styles.partidaModalContent}>
                         <View style={styles.partidaModalHeader}>
                             <Text style={styles.partidaModalTitle}>Selecciona una partida</Text>
-                            <TouchableOpacity onPress={() => setPartidaModalVisible(false)}>
-                                <Text style={styles.partidaModalClose}>✕</Text>
-                            </TouchableOpacity>
+                            <View style={styles.partidaModalHeaderButtons}>
+                                <TouchableOpacity onPress={fetchPartidas} style={styles.refreshButton}>
+                                    <Text style={styles.refreshButtonText}>🔄</Text>
+                                </TouchableOpacity>
+                                <TouchableOpacity onPress={() => setPartidaModalVisible(false)}>
+                                    <Text style={styles.partidaModalClose}>✕</Text>
+                                </TouchableOpacity>
+                            </View>
                         </View>
                         {loadingPartidas ? (
                             <View style={styles.loadingContainer}>
@@ -637,6 +648,17 @@ const styles = StyleSheet.create({
         paddingBottom: 10,
         borderBottomWidth: 1,
         borderBottomColor: '#eee',
+    },
+    partidaModalHeaderButtons: {
+        flexDirection: 'row',
+        alignItems: 'center',
+    },
+    refreshButton: {
+        marginRight: 10,
+        padding: 5,
+    },
+    refreshButtonText: {
+        fontSize: 16,
     },
     partidaModalTitle: {
         fontSize: 18,

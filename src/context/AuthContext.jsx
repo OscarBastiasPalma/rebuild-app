@@ -1,4 +1,5 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import env from '../config';
 
 const AuthContext = createContext();
@@ -14,6 +15,7 @@ export const useAuth = () => {
 export const AuthProvider = ({ children }) => {
     const [user, setUser] = useState(null);
     const [loading, setLoading] = useState(true);
+    const [token, setToken] = useState(null);
 
     useEffect(() => {
         checkAuth();
@@ -21,9 +23,21 @@ export const AuthProvider = ({ children }) => {
 
     const checkAuth = async () => {
         try {
+            // Primero obtener el token del AsyncStorage
+            const storedToken = await AsyncStorage.getItem('auth-token');
+            if (!storedToken) {
+                setLoading(false);
+                return;
+            }
+
+            setToken(storedToken);
+
             const { API_URL } = env();
             const response = await fetch(`${API_URL}/auth/check`, {
-                credentials: 'include'
+                headers: {
+                    'Authorization': `Bearer ${storedToken}`,
+                    'Content-Type': 'application/json'
+                }
             });
 
             if (response.ok) {
@@ -48,7 +62,10 @@ export const AuthProvider = ({ children }) => {
                     if (data.user.userType === 'PROFESSIONAL') {
                         try {
                             const profileResponse = await fetch(`${API_URL}/professionals/profile`, {
-                                credentials: 'include'
+                                headers: {
+                                    'Authorization': `Bearer ${storedToken}`,
+                                    'Content-Type': 'application/json'
+                                }
                             });
                             if (profileResponse.ok) {
                                 const profileContentType = profileResponse.headers.get('content-type');
@@ -69,9 +86,16 @@ export const AuthProvider = ({ children }) => {
                     }
                     setUser(data.user);
                 }
+            } else {
+                // Si el token no es válido, limpiarlo
+                await AsyncStorage.removeItem('auth-token');
+                setToken(null);
             }
         } catch (error) {
             console.error('Auth check error:', error);
+            // En caso de error, limpiar el token
+            await AsyncStorage.removeItem('auth-token');
+            setToken(null);
         } finally {
             setLoading(false);
         }
@@ -88,8 +112,7 @@ export const AuthProvider = ({ children }) => {
                 headers: {
                     'Content-Type': 'application/json',
                 },
-                body: JSON.stringify({ email, password, userType }),
-                credentials: 'include'
+                body: JSON.stringify({ email, password, userType })
             });
 
             console.log('📡 Status de respuesta:', response.status);
@@ -130,15 +153,19 @@ export const AuthProvider = ({ children }) => {
             }
 
             // Extract token from the response data
-            const token = data.token;
-            if (!token) {
+            const authToken = data.token;
+            if (!authToken) {
                 console.error('❌ No se encontró token en la respuesta');
                 throw new Error('No se pudo obtener el token de autenticación');
             }
 
+            // Guardar el token en AsyncStorage
+            await AsyncStorage.setItem('auth-token', authToken);
+            setToken(authToken);
+
             console.log('✅ Login exitoso para usuario:', data.user?.email);
             setUser(data.user);
-            return { data, token };
+            return { data, token: authToken };
         } catch (error) {
             console.error('❌ Login error completo:', error);
 
@@ -154,14 +181,42 @@ export const AuthProvider = ({ children }) => {
     const logout = async () => {
         try {
             const { API_URL } = env();
-            await fetch(`${API_URL}/auth/logout`, {
-                method: 'POST',
-                credentials: 'include'
-            });
+            const storedToken = await AsyncStorage.getItem('auth-token');
+
+            if (storedToken) {
+                await fetch(`${API_URL}/auth/logout`, {
+                    method: 'POST',
+                    headers: {
+                        'Authorization': `Bearer ${storedToken}`,
+                        'Content-Type': 'application/json'
+                    }
+                });
+            }
+
+            // Limpiar el token del AsyncStorage
+            await AsyncStorage.removeItem('auth-token');
+            setToken(null);
             setUser(null);
         } catch (error) {
             console.error('Logout error:', error);
+            // Aún así limpiar el estado local
+            await AsyncStorage.removeItem('auth-token');
+            setToken(null);
+            setUser(null);
         }
+    };
+
+    // Función helper para obtener headers con autenticación
+    const getAuthHeaders = () => {
+        const headers = {
+            'Content-Type': 'application/json'
+        };
+
+        if (token) {
+            headers['Authorization'] = `Bearer ${token}`;
+        }
+
+        return headers;
     };
 
     const value = {
@@ -169,7 +224,9 @@ export const AuthProvider = ({ children }) => {
         setUser,
         loading,
         login,
-        logout
+        logout,
+        token,
+        getAuthHeaders
     };
 
     return (
