@@ -960,7 +960,7 @@ VALIDACIONES:
                                                 </div>
                                                 <div class="detail-row">
                                                     <span class="detail-label">Cantidad:</span>
-                                                    <span class="detail-value">${item.cantidad || 0}</span>
+                                                    <span class="detail-value">${item.cantidad || 0} ${item.unidadMedida ? `(${item.unidadMedida})` : ''}</span>
                                                 </div>
                                                 <div class="detail-row">
                                                     <span class="detail-label">Precio Unitario:</span>
@@ -1254,7 +1254,7 @@ VALIDACIONES:
                             {item.foto ? <Image source={{ uri: item.foto }} style={styles.itemPhoto} /> : null}
                             <Text style={styles.label}><Text style={styles.bold}>Partida:</Text> {item.partida}</Text>
                             <Text style={styles.label}><Text style={styles.bold}>Descripción:</Text> {item.descripcion}</Text>
-                            <Text style={styles.label}><Text style={styles.bold}>Cantidad:</Text> {item.cantidad}</Text>
+                            <Text style={styles.label}><Text style={styles.bold}>Cantidad:</Text> {item.cantidad} {item.unidadMedida ? `(${item.unidadMedida})` : ''}</Text>
                             <Text style={styles.label}><Text style={styles.bold}>Precio Unitario:</Text> {item.precioUnitario?.toLocaleString() || 0} U.F</Text>
                             <Text style={styles.label}><Text style={styles.bold}>Total:</Text> {item.apuTotal?.toLocaleString() || 0} U.F</Text>
                             {ufData && ufData.success && (

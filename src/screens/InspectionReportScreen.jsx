@@ -26,6 +26,7 @@ const InspectionReportScreen = () => {
         descripcion: '',
         cantidad: 0,
         precioUnitario: false,
+        unidadMedida: '', // Agregar unidad de medida
     });
     const [modalVisible, setModalVisible] = useState(false);
     const [partidaModalVisible, setPartidaModalVisible] = useState(false);
@@ -52,6 +53,11 @@ const InspectionReportScreen = () => {
             console.log('APUs response status:', res.status);
             const data = await res.json();
             console.log('APUs data received:', data);
+
+            // Log para verificar si incluye unitApu
+            if (data.apus && data.apus.length > 0) {
+                console.log('Primera APU con unitApu:', data.apus[0]);
+            }
 
             setPartidas(data.apus || []);
             setDropdownItems(data.apus?.map(apu => ({
@@ -179,7 +185,8 @@ const InspectionReportScreen = () => {
             ...current,
             apuName: selectedApu.name,
             apuTotal: current.cantidad * selectedApu.total,
-            precioUnitario: selectedApu.total
+            precioUnitario: selectedApu.total,
+            unidadMedida: selectedApu.unitApu?.name || 'ud'
         }]);
 
         // Reset current item
@@ -188,7 +195,8 @@ const InspectionReportScreen = () => {
             partida: '',
             descripcion: '',
             cantidad: 0,
-            precioUnitario: false
+            precioUnitario: false,
+            unidadMedida: '',
         });
     };
 
@@ -278,7 +286,7 @@ const InspectionReportScreen = () => {
                         {item.foto ? <Image source={{ uri: item.foto }} style={styles.itemPhoto} /> : null}
                         <Text style={styles.label}><Text style={styles.bold}>Partida:</Text> {item.partida}</Text>
                         <Text style={styles.label}><Text style={styles.bold}>Descripción:</Text> {item.descripcion}</Text>
-                        <Text style={styles.label}><Text style={styles.bold}>Cantidad:</Text> {item.cantidad}</Text>
+                        <Text style={styles.label}><Text style={styles.bold}>Cantidad:</Text> {item.cantidad} {item.unidadMedida && `(${item.unidadMedida})`}</Text>
                     </View>
                 ))}
                 {/* Formulario para nuevo ítem */}
@@ -315,7 +323,7 @@ const InspectionReportScreen = () => {
                         numberOfLines={3}
                     />
                     <View style={styles.row}>
-                        <Text style={styles.label}>Cantidad  </Text>
+                        <Text style={styles.label}>Cantidad {current.unidadMedida && `(${current.unidadMedida})`}</Text>
                         <View style={styles.qtyContainer}>
                             <TextInput
                                 style={styles.qtyInput}
@@ -391,7 +399,13 @@ const InspectionReportScreen = () => {
                                             key={partida.id || index}
                                             style={styles.partidaOption}
                                             onPress={() => {
-                                                setCurrent({ ...current, partida: partida.name });
+                                                console.log('Partida seleccionada:', partida);
+                                                console.log('Unidad de medida:', partida.unitApu?.name);
+                                                setCurrent({
+                                                    ...current,
+                                                    partida: partida.name,
+                                                    unidadMedida: partida.unitApu?.name || 'ud'
+                                                });
                                                 setPartidaModalVisible(false);
                                             }}
                                         >

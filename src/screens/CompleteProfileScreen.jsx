@@ -124,20 +124,51 @@ const CompleteProfileScreen = () => {
     };
 
     const pickImage = async () => {
-        const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
-        if (status !== 'granted') {
-            Alert.alert('Permiso denegado', 'Se requiere permiso para acceder a la galería.');
-            return;
-        }
-        let result = await ImagePicker.launchImageLibraryAsync({
-            mediaTypes: ImagePicker.MediaTypeOptions.Images,
-            allowsEditing: true,
-            aspect: [1, 1],
-            quality: 0.5,
-        });
-        if (!result.canceled && result.assets && result.assets.length > 0) {
-            setForm({ ...form, profilePicture: result.assets[0] });
-        }
+        Alert.alert(
+            'Agregar foto de perfil',
+            '¿Qué deseas hacer?',
+            [
+                {
+                    text: 'Tomar foto',
+                    onPress: async () => {
+                        const { status } = await ImagePicker.requestCameraPermissionsAsync();
+                        if (status !== 'granted') {
+                            Alert.alert('Permiso denegado', 'Se requiere permiso para acceder a la cámara.');
+                            return;
+                        }
+                        let result = await ImagePicker.launchCameraAsync({
+                            mediaTypes: ImagePicker.MediaTypeOptions.Images,
+                            allowsEditing: true,
+                            aspect: [1, 1],
+                            quality: 0.5,
+                        });
+                        if (!result.canceled && result.assets && result.assets.length > 0) {
+                            setForm({ ...form, profilePicture: result.assets[0] });
+                        }
+                    },
+                },
+                {
+                    text: 'Galería',
+                    onPress: async () => {
+                        const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
+                        if (status !== 'granted') {
+                            Alert.alert('Permiso denegado', 'Se requiere permiso para acceder a la galería.');
+                            return;
+                        }
+                        let result = await ImagePicker.launchImageLibraryAsync({
+                            mediaTypes: ImagePicker.MediaTypeOptions.Images,
+                            allowsEditing: true,
+                            aspect: [1, 1],
+                            quality: 0.5,
+                        });
+                        if (!result.canceled && result.assets && result.assets.length > 0) {
+                            setForm({ ...form, profilePicture: result.assets[0] });
+                        }
+                    },
+                },
+                { text: 'Cancelar', style: 'cancel' },
+            ]
+        );
     };
 
     const handleSave = async () => {
