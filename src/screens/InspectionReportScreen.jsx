@@ -4,11 +4,18 @@ import * as ImagePicker from 'expo-image-picker';
 import { useRoute, useNavigation } from '@react-navigation/native';
 import axios from 'axios';
 import env from '../config';
+import { useSession } from '../context/SessionContext';
+import { Ionicons } from '@expo/vector-icons';
+import Constants from 'expo-constants';
+import { useAuth } from '../context/AuthContext';
+import DropDownPicker from 'react-native-dropdown-picker';
 
 const InspectionReportScreen = () => {
     const route = useRoute();
     const navigation = useNavigation();
     const { inspectionId, inspection, property, commune, city, region } = route.params;
+    const { session } = useSession();
+    const { getAuthHeaders } = useAuth();
 
     const [items, setItems] = useState([]);
     const [partidas, setPartidas] = useState([]);
@@ -19,9 +26,15 @@ const InspectionReportScreen = () => {
         descripcion: '',
         cantidad: 0,
         precioUnitario: false,
+        unidadMedida: '', // Agregar unidad de medida
     });
     const [modalVisible, setModalVisible] = useState(false);
     const [partidaModalVisible, setPartidaModalVisible] = useState(false);
+    const [loading, setLoading] = useState(false);
+
+    // Estados para el DropDown
+    const [dropdownOpen, setDropdownOpen] = useState(false);
+    const [dropdownItems, setDropdownItems] = useState([]);
 
     useEffect(() => {
         fetchPartidas();
@@ -31,28 +44,30 @@ const InspectionReportScreen = () => {
         try {
             setLoadingPartidas(true);
             const { API_URL } = env();
-            const url = `${API_URL}/apus`;
+            console.log('Fetching APUs from:', `${API_URL}/apus`);
 
-            const response = await fetch(url, {
-                method: 'GET',
-                headers: {
-                    'Accept': 'application/json',
-                    'Content-Type': 'application/json',
-                },
+            const res = await fetch(`${API_URL}/apus`, {
+                headers: getAuthHeaders()
             });
 
-            if (!response.ok) {
-                throw new Error(`HTTP error! status: ${response.status}`);
+            console.log('APUs response status:', res.status);
+            const data = await res.json();
+            console.log('APUs data received:', data);
+
+            // Log para verificar si incluye unitApu
+            if (data.apus && data.apus.length > 0) {
+                console.log('Primera APU con unitApu:', data.apus[0]);
             }
 
-            const data = await response.json();
+            setPartidas(data.apus || []);
+            setDropdownItems(data.apus?.map(apu => ({
+                label: apu.name,
+                value: apu.name
+            })) || []);
 
-            if (data && data.apus && Array.isArray(data.apus)) {
-                setPartidas(data.apus);
-            } else {
-                Alert.alert('Error', 'No se pudieron cargar las partidas');
-            }
-        } catch (error) {
+            console.log('APUs loaded:', data.apus?.length || 0);
+        } catch (e) {
+            console.error('Error loading APUs:', e);
             Alert.alert('Error', 'No se pudieron cargar las partidas');
         } finally {
             setLoadingPartidas(false);
@@ -79,7 +94,8 @@ const InspectionReportScreen = () => {
                             quality: 0.5,
                         });
                         if (!result.canceled && result.assets && result.assets.length > 0) {
-                            setCurrent({ ...current, foto: result.assets[0].uri });
+                            const imageUri = result.assets[0].uri;
+                            setCurrent({ ...current, foto: imageUri });
                         }
                     },
                 },
@@ -98,7 +114,8 @@ const InspectionReportScreen = () => {
                             quality: 0.5,
                         });
                         if (!result.canceled && result.assets && result.assets.length > 0) {
-                            setCurrent({ ...current, foto: result.assets[0].uri });
+                            const imageUri = result.assets[0].uri;
+                            setCurrent({ ...current, foto: imageUri });
                         }
                     },
                 },
@@ -110,7 +127,7 @@ const InspectionReportScreen = () => {
     const handleCantidad = (delta) => {
         setCurrent((prev) => ({
             ...prev,
-            cantidad: Math.max(0.01, parseFloat((prev.cantidad + delta).toFixed(2)))
+            cantidad: Math.max(0, parseFloat((prev.cantidad + delta).toFixed(2)))
         }));
     };
 
@@ -145,7 +162,7 @@ const InspectionReportScreen = () => {
         if (!isNaN(numValue)) {
             setCurrent(prev => ({
                 ...prev,
-                cantidad: numValue
+                cantidad: numValue >= 0 ? numValue : 0
             }));
         }
     };
@@ -155,8 +172,32 @@ const InspectionReportScreen = () => {
             Alert.alert('Completa todos los campos obligatorios');
             return;
         }
-        setItems([...items, current]);
-        setCurrent({ foto: '', partida: '', descripcion: '', cantidad: 0, precioUnitario: false });
+
+        // Find the selected APU from partidas
+        const selectedApu = partidas.find(p => p.name === current.partida);
+        if (!selectedApu) {
+            Alert.alert('Error', 'No se encontró la partida seleccionada');
+            return;
+        }
+
+        // Add the item with APU data
+        setItems([...items, {
+            ...current,
+            apuName: selectedApu.name,
+            apuTotal: current.cantidad * selectedApu.total,
+            precioUnitario: selectedApu.total,
+            unidadMedida: selectedApu.unitApu?.name || 'ud'
+        }]);
+
+        // Reset current item
+        setCurrent({
+            foto: '',
+            partida: '',
+            descripcion: '',
+            cantidad: 0,
+            precioUnitario: false,
+            unidadMedida: '',
+        });
     };
 
     const handleFinish = () => {
@@ -167,11 +208,30 @@ const InspectionReportScreen = () => {
         setModalVisible(true);
     };
 
-    const confirmFinish = () => {
-        setModalVisible(false);
-        navigation.replace('InspectionSummary', { inspectionId, items });
-        setItems([]);
-        setCurrent({ foto: '', partida: '', descripcion: '', cantidad: 0, precioUnitario: false });
+    const handleSubmit = async () => {
+        try {
+            if (items.length === 0) {
+                Alert.alert('Error', 'Debes agregar al menos un item');
+                return;
+            }
+
+            setModalVisible(false);
+
+            // Navegamos a InspectionSummary con los datos
+            navigation.navigate('InspectionSummary', {
+                inspectionId: inspection.id,
+                inspection: inspection,
+                report: {
+                    items: items
+                }
+            });
+
+        } catch (error) {
+            console.error('Error:', error);
+            Alert.alert('Error', 'Error al procesar la información');
+        } finally {
+            setLoading(false);
+        }
     };
 
     if (!inspection) return <Text style={{ margin: 40 }}>Inspección no encontrada</Text>;
@@ -226,7 +286,7 @@ const InspectionReportScreen = () => {
                         {item.foto ? <Image source={{ uri: item.foto }} style={styles.itemPhoto} /> : null}
                         <Text style={styles.label}><Text style={styles.bold}>Partida:</Text> {item.partida}</Text>
                         <Text style={styles.label}><Text style={styles.bold}>Descripción:</Text> {item.descripcion}</Text>
-                        <Text style={styles.label}><Text style={styles.bold}>Cantidad:</Text> {item.cantidad}</Text>
+                        <Text style={styles.label}><Text style={styles.bold}>Cantidad:</Text> {item.cantidad} {item.unidadMedida && `(${item.unidadMedida})`}</Text>
                     </View>
                 ))}
                 {/* Formulario para nuevo ítem */}
@@ -263,12 +323,11 @@ const InspectionReportScreen = () => {
                         numberOfLines={3}
                     />
                     <View style={styles.row}>
-                        <Text style={styles.label}>Cantidad</Text>
+                        <Text style={styles.label}>Cantidad {current.unidadMedida && `(${current.unidadMedida})`}</Text>
                         <View style={styles.qtyContainer}>
                             <TextInput
                                 style={styles.qtyInput}
                                 value={typeof current.cantidad === 'number' ? current.cantidad.toString() : current.cantidad}
-                                keyboardType="decimal-pad"
                                 onChangeText={handleCantidadChange}
                                 placeholder="0.00"
                             />
@@ -294,7 +353,7 @@ const InspectionReportScreen = () => {
                     <View style={styles.modalContent}>
                         <Text style={styles.modalTitle}>¿Estás seguro de que la información es correcta?</Text>
                         <View style={styles.modalButtons}>
-                            <TouchableOpacity style={styles.modalButton} onPress={confirmFinish}>
+                            <TouchableOpacity style={styles.modalButton} onPress={handleSubmit}>
                                 <Text style={styles.modalButtonText}>Sí, guardar</Text>
                             </TouchableOpacity>
                             <TouchableOpacity style={[styles.modalButton, { backgroundColor: '#ccc' }]} onPress={() => setModalVisible(false)}>
@@ -319,9 +378,14 @@ const InspectionReportScreen = () => {
                     <View style={styles.partidaModalContent}>
                         <View style={styles.partidaModalHeader}>
                             <Text style={styles.partidaModalTitle}>Selecciona una partida</Text>
-                            <TouchableOpacity onPress={() => setPartidaModalVisible(false)}>
-                                <Text style={styles.partidaModalClose}>✕</Text>
-                            </TouchableOpacity>
+                            <View style={styles.partidaModalHeaderButtons}>
+                                <TouchableOpacity onPress={fetchPartidas} style={styles.refreshButton}>
+                                    <Text style={styles.refreshButtonText}>🔄</Text>
+                                </TouchableOpacity>
+                                <TouchableOpacity onPress={() => setPartidaModalVisible(false)}>
+                                    <Text style={styles.partidaModalClose}>✕</Text>
+                                </TouchableOpacity>
+                            </View>
                         </View>
                         {loadingPartidas ? (
                             <View style={styles.loadingContainer}>
@@ -335,7 +399,13 @@ const InspectionReportScreen = () => {
                                             key={partida.id || index}
                                             style={styles.partidaOption}
                                             onPress={() => {
-                                                setCurrent({ ...current, partida: partida.name });
+                                                console.log('Partida seleccionada:', partida);
+                                                console.log('Unidad de medida:', partida.unitApu?.name);
+                                                setCurrent({
+                                                    ...current,
+                                                    partida: partida.name,
+                                                    unidadMedida: partida.unitApu?.name || 'ud'
+                                                });
                                                 setPartidaModalVisible(false);
                                             }}
                                         >
@@ -592,6 +662,17 @@ const styles = StyleSheet.create({
         paddingBottom: 10,
         borderBottomWidth: 1,
         borderBottomColor: '#eee',
+    },
+    partidaModalHeaderButtons: {
+        flexDirection: 'row',
+        alignItems: 'center',
+    },
+    refreshButton: {
+        marginRight: 10,
+        padding: 5,
+    },
+    refreshButtonText: {
+        fontSize: 16,
     },
     partidaModalTitle: {
         fontSize: 18,

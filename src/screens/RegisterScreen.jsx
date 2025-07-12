@@ -203,7 +203,7 @@ const styles = StyleSheet.create({
         marginTop: 15,
         textDecorationLine: 'underline',
         fontSize: 14
-    }
+    },
 });
 
 export default RegisterScreen;

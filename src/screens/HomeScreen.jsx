@@ -4,10 +4,12 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import env from '../config';
 import { useFocusEffect } from '@react-navigation/native';
 import { Ionicons, MaterialIcons } from '@expo/vector-icons';
+import { useAuth } from '../context/AuthContext';
 
 const comunas = ['Todas', 'San Miguel', 'La Florida'];
 
 const HomeScreen = ({ navigation, route }) => {
+    const { getAuthHeaders } = useAuth();
     const [user, setUser] = useState(null);
     const [searchComuna, setSearchComuna] = useState('Todas');
     const [pendingInspections, setPendingInspections] = useState([]);
@@ -35,7 +37,7 @@ const HomeScreen = ({ navigation, route }) => {
                 if (route && route.params && route.params.id) {
                     url += `?id=${route.params.id}`;
                 }
-                const res = await fetch(url, { credentials: 'include' });
+                const res = await fetch(url, { headers: getAuthHeaders() });
                 if (!res.ok) throw new Error('No se pudo obtener el perfil');
                 const data = await res.json();
                 setUser(data);
@@ -46,7 +48,7 @@ const HomeScreen = ({ navigation, route }) => {
             }
         };
         fetchUser();
-    }, [route]);
+    }, [route, getAuthHeaders]);
 
     useFocusEffect(
         useCallback(() => {
@@ -55,11 +57,11 @@ const HomeScreen = ({ navigation, route }) => {
                 try {
                     const { API_URL } = env();
                     // Fetch pendientes
-                    const resPend = await fetch(`${API_URL}/inspections?status=PENDIENTE`, { credentials: 'include' });
+                    const resPend = await fetch(`${API_URL}/inspections?status=PENDIENTE`, { headers: getAuthHeaders() });
                     const dataPend = resPend.ok ? await resPend.json() : { inspections: [] };
                     if (isActive) setPendingInspections(dataPend.inspections || []);
                     // Fetch disponibles
-                    const resDisp = await fetch(`${API_URL}/inspections?status=SOLICITADO`, { credentials: 'include' });
+                    const resDisp = await fetch(`${API_URL}/inspections?status=SOLICITADO`, { headers: getAuthHeaders() });
                     const dataDisp = resDisp.ok ? await resDisp.json() : { inspections: [] };
                     if (isActive) {
                         setAvailableInspections(dataDisp.inspections || []);
@@ -78,7 +80,7 @@ const HomeScreen = ({ navigation, route }) => {
             setLoadingInspections(true);
             fetchInspections();
             return () => { isActive = false; };
-        }, [])
+        }, [getAuthHeaders])
     );
 
     useEffect(() => {
@@ -111,11 +113,11 @@ const HomeScreen = ({ navigation, route }) => {
             try {
                 const { API_URL } = env();
                 // Fetch pendientes
-                const resPend = await fetch(`${API_URL}/inspections?status=PENDIENTE`, { credentials: 'include' });
+                const resPend = await fetch(`${API_URL}/inspections?status=PENDIENTE`, { headers: getAuthHeaders() });
                 const dataPend = resPend.ok ? await resPend.json() : { inspections: [] };
                 setPendingInspections(dataPend.inspections || []);
                 // Fetch disponibles
-                const resDisp = await fetch(`${API_URL}/inspections?status=SOLICITADO`, { credentials: 'include' });
+                const resDisp = await fetch(`${API_URL}/inspections?status=SOLICITADO`, { headers: getAuthHeaders() });
                 const dataDisp = resDisp.ok ? await resDisp.json() : { inspections: [] };
                 setAvailableInspections(dataDisp.inspections || []);
                 setFilteredInspections(dataDisp.inspections || []);
@@ -128,7 +130,7 @@ const HomeScreen = ({ navigation, route }) => {
             }
         };
         fetchInspections();
-    }, []);
+    }, [getAuthHeaders]);
 
     if (loadingUser) {
         return (

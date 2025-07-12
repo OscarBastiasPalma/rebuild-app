@@ -2,10 +2,9 @@ import React, { useState } from 'react';
 import { View, Text, TextInput, TouchableOpacity, Alert, StyleSheet, Image, KeyboardAvoidingView, Platform, ActivityIndicator } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import { useAuth } from '../context/AuthContext';
+import { useSession } from '../context/SessionContext';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import env from '../config';
-
-const { API_URL } = env('dev');
 
 const LoginScreen = () => {
     const [email, setEmail] = useState('');
@@ -13,6 +12,7 @@ const LoginScreen = () => {
     const [loading, setLoading] = useState(false);
     const navigation = useNavigation();
     const { login } = useAuth();
+    const { updateSession } = useSession();
 
     const validateEmail = (email) => {
         const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
@@ -32,7 +32,19 @@ const LoginScreen = () => {
         setLoading(true);
         try {
             // Usar la función login del contexto de autenticación
-            const data = await login(email, password, 'PROFESSIONAL');
+            const { data, token } = await login(email, password, 'PROFESSIONAL');
+
+            // Actualizar la sesión con los datos del usuario y el token
+            await updateSession({
+                user: {
+                    id: data.user.id,
+                    email: data.user.email,
+                    name: data.user.name,
+                    userType: data.user.userType,
+                    profileCompleted: data.user.profileCompleted
+                },
+                token: token
+            });
 
             // Navegar según el estado del perfil
             if (!data.user.profileCompleted) {
