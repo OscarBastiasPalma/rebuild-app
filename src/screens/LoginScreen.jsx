@@ -66,7 +66,7 @@ const LoginScreen = () => {
             style={styles.container}
         >
             <View style={styles.card}>
-                <Image source={require('../../assets/icon.png')} style={styles.logo} />
+                <Image source={require('../../assets/logo.png')} style={styles.logo} />
                 <Text style={styles.title}>Bienvenido!</Text>
 
                 <Text style={styles.label}>Email</Text>
