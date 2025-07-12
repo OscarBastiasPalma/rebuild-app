@@ -460,80 +460,573 @@ VALIDACIONES:
             });
         });
 
+        // Calcular totales generales
+        const totalUF = report.items.reduce((sum, item) => sum + (item.apuTotal || 0), 0);
+        const totalCLP = ufData && ufData.success ? calculateTotalWithUF(totalUF, ufData.valor) : 0;
+
+        // Función para renderizar imagen de item
+        const renderItemImage = (item, idx) => {
+            if (item.cloudinaryUrl) {
+                if (process.env.DEBUG) {
+                    console.log(`📷 PDF: Usando Cloudinary URL para item ${idx}:`, item.cloudinaryUrl);
+                }
+                return `<img src="${item.cloudinaryUrl}" class="item-image" alt="Imagen del item ${idx + 1}" />`;
+            } else if (item.foto && item.foto.startsWith('http')) {
+                if (process.env.DEBUG) {
+                    console.log(`📷 PDF: Usando URL HTTP para item ${idx}:`, item.foto);
+                }
+                return `<img src="${item.foto}" class="item-image" alt="Imagen del item ${idx + 1}" />`;
+            } else if (item.foto && item.foto.startsWith('data:image')) {
+                if (process.env.DEBUG) {
+                    console.log(`📷 PDF: Usando base64 para item ${idx}`);
+                }
+                return `<img src="${item.foto}" class="item-image" alt="Imagen del item ${idx + 1}" />`;
+            } else {
+                if (process.env.DEBUG) {
+                    console.log(`❌ PDF: No hay imagen válida para item ${idx}`);
+                }
+                return `<div class="no-image">Sin imagen disponible</div>`;
+            }
+        };
+
         const html = `
             <html>
                 <head>
+                    <meta charset="UTF-8">
+                    <meta name="viewport" content="width=device-width, initial-scale=1.0">
                     <style>
-                        body { font-family: Arial, sans-serif; margin: 20px; }
-                        .item-image { max-width: 200px; max-height: 150px; object-fit: cover; margin: 10px 0; }
-                        .signature-image { max-width: 300px; max-height: 120px; object-fit: contain; }
-                        .item-container { margin-bottom: 20px; border-bottom: 1px solid #ccc; padding-bottom: 15px; }
-                        h2, h3, h4 { color: #333; }
-                        .signature-section { text-align: center; margin-top: 30px; }
-                        .uf-info { background-color: #f8f9fa; padding: 10px; border-radius: 5px; margin: 10px 0; }
+                        @page {
+                            margin: 20px;
+                            size: A4 portrait;
+                            @bottom-center {
+                                content: "Página " counter(page) " de " counter(pages);
+                                font-size: 10px;
+                                color: #666;
+                            }
+                        }
+                        
+                        body { 
+                            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; 
+                            margin: 0; 
+                            padding: 0;
+                            line-height: 1.6;
+                            color: #333;
+                            background-color: #fff;
+                        }
+                        
+                        /* PÁGINA 1 - Header e información general */
+                        .page-1 {
+                            page-break-inside: avoid;
+                        }
+                        
+                        .header {
+                            background: linear-gradient(135deg, #FFA500, #FF8C00);
+                            color: white;
+                            padding: 30px;
+                            text-align: center;
+                            border-radius: 8px;
+                            margin-bottom: 40px;
+                            box-shadow: 0 4px 8px rgba(0,0,0,0.1);
+                        }
+                        
+                        .header h1 {
+                            margin: 0;
+                            font-size: 32px;
+                            font-weight: 700;
+                            text-shadow: 2px 2px 4px rgba(0,0,0,0.3);
+                            margin-bottom: 15px;
+                        }
+                        
+                        .header .subtitle {
+                            font-size: 18px;
+                            font-weight: 300;
+                            opacity: 0.9;
+                        }
+                        
+                        .report-info {
+                            background-color: #f8f9fa;
+                            border-left: 4px solid #FFA500;
+                            padding: 25px;
+                            margin-bottom: 30px;
+                            border-radius: 0 8px 8px 0;
+                        }
+                        
+                        .report-info h2 {
+                            color: #FFA500;
+                            margin-top: 0;
+                            margin-bottom: 20px;
+                            font-size: 24px;
+                            font-weight: 600;
+                        }
+                        
+                        .info-grid {
+                            display: grid;
+                            grid-template-columns: 1fr 1fr;
+                            gap: 20px;
+                            margin-bottom: 25px;
+                        }
+                        
+                        .info-item {
+                            background: white;
+                            padding: 15px;
+                            border-radius: 6px;
+                            border: 1px solid #e0e0e0;
+                            box-shadow: 0 2px 4px rgba(0,0,0,0.05);
+                        }
+                        
+                        .info-label {
+                            font-weight: 600;
+                            color: #666;
+                            font-size: 14px;
+                            margin-bottom: 6px;
+                        }
+                        
+                        .info-value {
+                            font-size: 16px;
+                            color: #333;
+                            font-weight: 500;
+                            word-break: break-word;
+                        }
+                        
+                        .uf-info {
+                            background: linear-gradient(135deg, #e3f2fd, #bbdefb);
+                            border: 1px solid #2196F3;
+                            border-radius: 8px;
+                            padding: 25px;
+                            margin: 30px 0;
+                            text-align: center;
+                        }
+                        
+                        .uf-info h3 {
+                            color: #1976D2;
+                            margin-top: 0;
+                            margin-bottom: 15px;
+                            font-size: 20px;
+                        }
+                        
+                        .uf-value {
+                            font-size: 28px;
+                            font-weight: 700;
+                            color: #1976D2;
+                            margin: 15px 0;
+                        }
+                        
+                        .uf-date {
+                            color: #666;
+                            font-size: 16px;
+                        }
+                        
+                        /* PÁGINAS DE ITEMS - Cada item en su propia página */
+                        .item-page {
+                            page-break-before: always;
+                            page-break-inside: avoid;
+                            display: flex;
+                            flex-direction: column;
+                            padding: 0;
+                            margin: 0;
+                            box-sizing: border-box;
+                        }
+                        
+                        .item-page:not(:first-of-type) {
+                            page-break-before: always;
+                        }
+                        
+                        .item-page-header {
+                            background-color: #FFA500;
+                            color: white;
+                            padding: 15px;
+                            text-align: center;
+                            border-radius: 8px;
+                            margin-bottom: 20px;
+                            font-size: 20px;
+                            font-weight: 600;
+                            flex-shrink: 0;
+                        }
+                        
+                        .item-card {
+                            background: white;
+                            border: 1px solid #e0e0e0;
+                            border-radius: 8px;
+                            overflow: hidden;
+                            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+                            flex: 1;
+                            display: flex;
+                            flex-direction: column;
+                            page-break-inside: avoid;
+                        }
+                        
+                        .item-header {
+                            background: linear-gradient(135deg, #f5f5f5, #e8e8e8);
+                            padding: 15px;
+                            border-bottom: 1px solid #ddd;
+                            flex-shrink: 0;
+                        }
+                        
+                        .item-number {
+                            font-size: 20px;
+                            font-weight: 600;
+                            color: #FFA500;
+                            margin: 0;
+                        }
+                        
+                        .item-body {
+                            padding: 15px;
+                            flex: 1;
+                            display: flex;
+                            flex-direction: column;
+                            overflow: hidden;
+                        }
+                        
+                        .item-content {
+                            display: flex;
+                            flex-direction: row;
+                            gap: 20px;
+                            height: 100%;
+                        }
+                        
+                        .item-image-container {
+                            flex: 0 0 300px;
+                            display: flex;
+                            align-items: flex-start;
+                            justify-content: center;
+                        }
+                        
+                        .item-image {
+                            max-width: 300px;
+                            max-height: 280px;
+                            width: auto;
+                            height: auto;
+                            border-radius: 8px;
+                            border: 1px solid #ddd;
+                            object-fit: contain;
+                            box-shadow: 0 4px 8px rgba(0,0,0,0.1);
+                        }
+                        
+                        .item-details {
+                            flex: 1;
+                            background: #f8f9fa;
+                            padding: 15px;
+                            border-radius: 8px;
+                            border: 1px solid #e0e0e0;
+                            display: flex;
+                            flex-direction: column;
+                            justify-content: space-between;
+                        }
+                        
+                        .detail-row {
+                            display: flex;
+                            flex-direction: column;
+                            align-items: flex-start;
+                            gap: 5px;
+                            padding: 8px 0;
+                            border-bottom: 1px solid #e0e0e0;
+                        }
+                        
+                        .detail-row:nth-child(odd) {
+                            background-color: #fcfcfc;
+                        }
+                        
+                        .detail-row:last-child {
+                            border-bottom: none;
+                            font-weight: 600;
+                            font-size: 16px;
+                            color: #FFA500;
+                            background: white;
+                            padding: 12px;
+                            border-radius: 6px;
+                            margin-top: 10px;
+                        }
+                        
+                        .detail-label {
+                            font-weight: 600;
+                            color: #666;
+                            width: 100%;
+                            font-size: 14px;
+                            text-align: left;
+                        }
+                        
+                        .detail-value {
+                            color: #333;
+                            text-align: left;
+                            font-size: 14px;
+                            width: 100%;
+                            word-break: break-word;
+                        }
+                        
+                        .no-image {
+                            width: 300px;
+                            height: 200px;
+                            background: #f0f0f0;
+                            border: 2px dashed #ccc;
+                            border-radius: 8px;
+                            display: flex;
+                            align-items: center;
+                            justify-content: center;
+                            color: #666;
+                            font-style: italic;
+                            font-size: 14px;
+                        }
+                        
+                        /* PÁGINA FINAL - Resumen y firma */
+                        .final-page {
+                            page-break-before: always;
+                            page-break-inside: avoid;
+                            page-break-after: avoid;
+                            min-height: auto;
+                        }
+                        
+                        .summary-section {
+                            background: linear-gradient(135deg, #fff3cd, #ffeaa7);
+                            border: 1px solid #FFA500;
+                            border-radius: 8px;
+                            padding: 30px;
+                            margin: 30px 0;
+                            text-align: center;
+                            page-break-inside: avoid;
+                        }
+                        
+                        .summary-title {
+                            font-size: 24px;
+                            font-weight: 600;
+                            color: #FFA500;
+                            margin-bottom: 25px;
+                        }
+                        
+                        .summary-totals {
+                            display: grid;
+                            grid-template-columns: 1fr 1fr;
+                            gap: 25px;
+                            margin-top: 20px;
+                        }
+                        
+                        .total-item {
+                            background: white;
+                            padding: 20px;
+                            border-radius: 8px;
+                            border: 1px solid #FFA500;
+                            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+                        }
+                        
+                        .total-label {
+                            font-size: 16px;
+                            color: #666;
+                            margin-bottom: 8px;
+                        }
+                        
+                        .total-value {
+                            font-size: 28px;
+                            font-weight: 700;
+                            color: #FFA500;
+                        }
+                        
+                        .signature-section {
+                            background: white;
+                            border: 2px solid #FFA500;
+                            border-radius: 8px;
+                            padding: 30px;
+                            margin-top: 40px;
+                            text-align: center;
+                            page-break-inside: avoid;
+                        }
+                        
+                        .signature-title {
+                            font-size: 24px;
+                            font-weight: 600;
+                            color: #FFA500;
+                            margin-bottom: 25px;
+                        }
+                        
+                        .signature-image {
+                            max-width: 500px;
+                            max-height: 200px;
+                            object-fit: contain;
+                            border: 1px solid #ddd;
+                            border-radius: 8px;
+                            margin: 20px 0;
+                            background: white;
+                        }
+                        
+                        .signature-info {
+                            margin-top: 25px;
+                            padding: 20px;
+                            background: #f8f9fa;
+                            border-radius: 8px;
+                        }
+                        
+                        .signature-name {
+                            font-size: 20px;
+                            font-weight: 600;
+                            color: #333;
+                            margin-bottom: 10px;
+                        }
+                        
+                        .signature-date {
+                            color: #666;
+                            font-size: 16px;
+                        }
+                        
+                        .footer {
+                            margin-top: 50px;
+                            text-align: center;
+                            font-size: 12px;
+                            color: #666;
+                            border-top: 1px solid #ddd;
+                            padding-top: 25px;
+                            page-break-inside: avoid;
+                            page-break-after: avoid;
+                        }
                     </style>
-                </head>
+                                </head>
                 <body>
-                    <h2>Revisión Informe de Inspección</h2>
-                    <p><b>Dirección:</b> ${inspectionData.property?.address}</p>
-                    <p><b>Comuna:</b> ${inspectionData.commune?.name}</p>
-                    <p><b>Ciudad:</b> ${inspectionData.city?.name}</p>
-                    <p><b>Región:</b> ${inspectionData.region?.name}</p>
-                    <p><b>Fecha de visita:</b> ${new Date(inspectionData.visitDate).toLocaleDateString()}</p>
-                    ${ufData && ufData.success ? `
-                    <div class="uf-info">
-                        <p><b>Valor UF al día de hoy:</b> $${ufData.valor.toLocaleString('es-CL')}</p>
-                        <p><b>Fecha del valor UF:</b> ${ufData.fechaFormateada}</p>
-                    </div>
-                    ` : ''}
-                    <hr/>
+                    <!-- PÁGINA 1: Header e Información General -->
+                    <main class="page-1">
+                        <div class="header">
+                            <h1>INFORME DE INSPECCIÓN TÉCNICA</h1>
+                            <div class="subtitle">Reporte Profesional de Evaluación de Propiedad</div>
+                        </div>
+                        
+                        <div class="report-info">
+                            <h2>Información General</h2>
+                            <div class="info-grid">
+                                <div class="info-item">
+                                    <div class="info-label">Dirección</div>
+                                    <div class="info-value">${inspectionData.property?.address || 'No especificada'}</div>
+                                </div>
+                                <div class="info-item">
+                                    <div class="info-label">Comuna</div>
+                                    <div class="info-value">${inspectionData.commune?.name || 'No especificada'}</div>
+                                </div>
+                                <div class="info-item">
+                                    <div class="info-label">Ciudad</div>
+                                    <div class="info-value">${inspectionData.city?.name || 'No especificada'}</div>
+                                </div>
+                                <div class="info-item">
+                                    <div class="info-label">Región</div>
+                                    <div class="info-value">${inspectionData.region?.name || 'No especificada'}</div>
+                                </div>
+                                <div class="info-item">
+                                    <div class="info-label">Fecha de Inspección</div>
+                                    <div class="info-value">${new Date(inspectionData.visitDate).toLocaleDateString('es-CL', {
+            year: 'numeric',
+            month: 'long',
+            day: 'numeric'
+        })}</div>
+                                </div>
+                                <div class="info-item">
+                                    <div class="info-label">Inspector</div>
+                                    <div class="info-value">${inspectionData.inspector?.user?.name || 'No especificado'}</div>
+                                </div>
+                            </div>
+                        </div>
+
+                        ${ufData && ufData.success ? `
+                        <div class="uf-info">
+                            <h3>Referencia Unidad de Fomento (UF)</h3>
+                            <div class="uf-value">$${ufData.valor.toLocaleString('es-CL')}</div>
+                            <div class="uf-date">Valor vigente al ${ufData.fechaFormateada}</div>
+                        </div>
+                        ` : ''}
+                    </main>
+
+                                        <!-- PÁGINAS DE ITEMS: Cada item en su propia página -->
                     ${report.items.map((item, idx) => {
-            // Determinar qué URL de imagen usar (prioridad: Cloudinary > HTTP > File local > Base64)
-            let imageHtml = '';
-
-            if (item.cloudinaryUrl) {
-                imageHtml = `<img src="${item.cloudinaryUrl}" class="item-image" alt="Imagen del item ${idx + 1}" /><br/>`;
-                console.log(`📷 PDF: Usando Cloudinary URL para item ${idx}:`, item.cloudinaryUrl);
-            } else if (item.foto && item.foto.startsWith('http')) {
-                imageHtml = `<img src="${item.foto}" class="item-image" alt="Imagen del item ${idx + 1}" /><br/>`;
-                console.log(`📷 PDF: Usando URL HTTP para item ${idx}:`, item.foto);
-            } else if (item.foto && item.foto.startsWith('data:image')) {
-                imageHtml = `<img src="${item.foto}" class="item-image" alt="Imagen del item ${idx + 1}" /><br/>`;
-                console.log(`📷 PDF: Usando base64 para item ${idx}`);
-            } else if (item.foto && item.foto.startsWith('file://')) {
-                // Para archivos locales, intentar convertir a base64 en tiempo real
-                console.log(`⚠️ PDF: Archivo local detectado para item ${idx}, esto podría no funcionar en PDF:`, item.foto);
-                imageHtml = ''; // Los archivos locales no funcionan en PDF
-            } else {
-                console.log(`❌ PDF: No hay imagen válida para item ${idx}`);
-            }
-
             // Calcular total con UF
             const totalWithUF = ufData && ufData.success ?
                 calculateTotalWithUF(item.apuTotal, ufData.valor) :
                 item.apuTotal;
 
             return `
-                        <div class="item-container">
-                            <h4>Item ${idx + 1}</h4>
-                            ${imageHtml}
-                            <b>Partida:</b> ${item.partida}<br/>
-                            <b>Descripción:</b> ${item.descripcion}<br/>
-                            <b>Cantidad:</b> ${item.cantidad}<br/>
-                            <b>Precio Unitario:</b> ${item.precioUnitario?.toLocaleString() || 0} U.F<br/>
-                            <b>Total:</b> ${item.apuTotal?.toLocaleString() || 0} U.F
-                            ${ufData && ufData.success ? `<br/><b>Total CLP:</b> ${formatTotalWithUF(totalWithUF)}` : ''}
-                        </div>
+                            <article class="item-page">
+                                <div class="item-page-header">
+                                    DETALLE DE ITEM INSPECCIONADO
+                                </div>
+                                <div class="item-card">
+                                    <div class="item-header">
+                                        <h3 class="item-number">Item ${idx + 1}</h3>
+                                    </div>
+                                    <div class="item-body">
+                                        <div class="item-content">
+                                            <div class="item-image-container">
+                                                ${renderItemImage(item, idx)}
+                                            </div>
+                                            <div class="item-details">
+                                                <div class="detail-row">
+                                                    <span class="detail-label">Partida:</span>
+                                                    <span class="detail-value">${item.partida || 'No especificada'}</span>
+                                                </div>
+                                                <div class="detail-row">
+                                                    <span class="detail-label">Descripción:</span>
+                                                    <span class="detail-value">${item.descripcion || 'No especificada'}</span>
+                                                </div>
+                                                <div class="detail-row">
+                                                    <span class="detail-label">Cantidad:</span>
+                                                    <span class="detail-value">${item.cantidad || 0}</span>
+                                                </div>
+                                                <div class="detail-row">
+                                                    <span class="detail-label">Precio Unitario:</span>
+                                                    <span class="detail-value">${(item.precioUnitario || 0).toLocaleString('es-CL')} UF</span>
+                                                </div>
+                                                <div class="detail-row">
+                                                    <span class="detail-label">Subtotal UF:</span>
+                                                    <span class="detail-value">${(item.apuTotal || 0).toLocaleString('es-CL')} UF</span>
+                                                </div>
+                                                ${ufData && ufData.success ? `
+                                                <div class="detail-row">
+                                                    <span class="detail-label">Subtotal CLP:</span>
+                                                    <span class="detail-value">${formatTotalWithUF(totalWithUF)}</span>
+                                                </div>
+                                                ` : ''}
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </article>
                         `;
         }).join('')}
-                    <div class="signature-section">
-                        <h3>Firma del propietario</h3>
-                        ${signatureSrc ? `<img src="${signatureSrc}" class="signature-image" alt="Firma del propietario" />` : '<p>Sin firma</p>'}
-                        <div style="margin-top: 20px;">
-                            <p><b>Firmado por:</b> ${ownerName}</p>
-                            <p><b>Fecha y hora de firma:</b> ${signatureDate}</p>
+
+                                        <!-- PÁGINA FINAL: Resumen y Firma -->
+                    ${report.items.length > 0 ? `
+                    <div class="final-page">
+                        <div class="summary-section">
+                            <div class="summary-title">RESUMEN FINANCIERO</div>
+                            <div class="summary-totals">
+                                <div class="total-item">
+                                    <div class="total-label">Total General (UF)</div>
+                                    <div class="total-value">${totalUF.toLocaleString('es-CL')} UF</div>
+                                </div>
+                                ${ufData && ufData.success ? `
+                                <div class="total-item">
+                                    <div class="total-label">Total General (CLP)</div>
+                                    <div class="total-value">${formatTotalWithUF(totalCLP)}</div>
+                                </div>
+                                ` : ''}
+                            </div>
                         </div>
+
+                        <div class="signature-section">
+                            <div class="signature-title">VALIDACIÓN Y FIRMA</div>
+                            ${signatureSrc ? `
+                                <img src="${signatureSrc}" class="signature-image" alt="Firma del propietario" />
+                            ` : '<div style="color: #666; font-style: italic;">Sin firma disponible</div>'}
+                            
+                            <div class="signature-info">
+                                <div class="signature-name">Firmado por: ${ownerName}</div>
+                                <div class="signature-date">Fecha y hora: ${signatureDate}</div>
+                            </div>
+                        </div>
+
+                        <footer class="footer">
+                            <p>Este reporte fue generado automáticamente el ${new Date().toLocaleDateString('es-CL', {
+            year: 'numeric',
+            month: 'long',
+            day: 'numeric',
+            hour: '2-digit',
+            minute: '2-digit'
+        })}</p>
+                            <p>Documento confidencial - Solo para uso autorizado</p>
+                        </footer>
                     </div>
+                    ` : ''}
                 </body>
             </html>
         `;
